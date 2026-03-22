@@ -11,14 +11,24 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# Maximum request body size: 1 MiB (prevents OOM from malicious Content-Length)
+_MAX_BODY_BYTES = 1 * 1024 * 1024
+
 
 class ChatHandler(BaseHTTPRequestHandler):
+    # Instance-level attributes set by ChatServer before serving.
+    # Each ChatServer instance sets these on the *class* it passes to
+    # HTTPServer, but since we only support one runner per server this
+    # is acceptable.  A threading.Lock serialises runner access so two
+    # concurrent requests cannot interleave conversation state.
     runner: Any = None
     session: Any = None
     auth_token: str = ""
+    cors_origin: str = ""
+    _runner_lock: threading.Lock = threading.Lock()
+    _loop: asyncio.AbstractEventLoop | None = None
 
     def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
-        # Route HTTP log messages through our logger instead of stderr
         logger.debug(format, *args)
 
     # ------------------------------------------------------------------
@@ -30,11 +40,11 @@ class ChatHandler(BaseHTTPRequestHandler):
             return True
         header = self.headers.get("Authorization", "")
         expected = f"Bearer {self.auth_token}"
-        # Constant-time comparison to prevent timing attacks
         return hmac.compare_digest(header.encode("utf-8"), expected.encode("utf-8"))
 
     def _add_cors_headers(self) -> None:
-        self.send_header("Access-Control-Allow-Origin", "*")
+        origin = self.cors_origin or "*"
+        self.send_header("Access-Control-Allow-Origin", origin)
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept")
 
@@ -59,6 +69,13 @@ class ChatHandler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", 0))
         except (ValueError, TypeError):
             self._send_json({"error": "invalid Content-Length"}, status=400)
+            return
+
+        if length > _MAX_BODY_BYTES:
+            self._send_json(
+                {"error": f"request body too large (max {_MAX_BODY_BYTES} bytes)"},
+                status=413,
+            )
             return
 
         body = self.rfile.read(length)
@@ -126,17 +143,16 @@ class ChatHandler(BaseHTTPRequestHandler):
 
     def _handle_sse(self, message: str) -> None:
         """Stream events via Server-Sent Events."""
+        if self.runner is None:
+            self._send_json({"error": "no runner attached"}, status=503)
+            return
+
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
         self.send_header("Connection", "keep-alive")
         self._add_cors_headers()
         self.end_headers()
-
-        if self.runner is None:
-            self._sse_send({"error": "no runner attached"})
-            self._sse_done()
-            return
 
         try:
             events = self._run_async(message)
@@ -156,14 +172,24 @@ class ChatHandler(BaseHTTPRequestHandler):
     # ------------------------------------------------------------------
 
     def _run_async(self, message: str) -> list:
-        """Collect all events from the async runner in a new event loop."""
-        async def _collect():
+        """Collect all events from the async runner.
+
+        Uses a lock to serialise concurrent requests — only one conversation
+        turn runs at a time, preventing interleaved session state.
+        Uses a shared event loop to avoid asyncio.run() conflicts in threads.
+        """
+        async def _collect() -> list:
             events = []
             async for event in self.runner.run(message):
                 events.append(event)
             return events
 
-        return asyncio.run(_collect())
+        with self._runner_lock:
+            loop = ChatHandler._loop
+            if loop is None or loop.is_closed():
+                loop = asyncio.new_event_loop()
+                ChatHandler._loop = loop
+            return loop.run_until_complete(_collect())
 
     def _sse_send(self, payload: dict) -> None:
         data = json.dumps(payload)
@@ -196,10 +222,12 @@ class ChatServer:
         host: str = "127.0.0.1",
         port: int = 8080,
         auth_token: str = "",
+        cors_origin: str = "",
     ) -> None:
         self.host = host
         self.port = port
         self.auth_token = auth_token
+        self.cors_origin = cors_origin
         self._server: HTTPServer | None = None
         self._thread: threading.Thread | None = None
 
@@ -209,13 +237,13 @@ class ChatServer:
 
     def start(self) -> None:
         ChatHandler.auth_token = self.auth_token
+        ChatHandler.cors_origin = self.cors_origin
         self._server = ThreadingChatServer((self.host, self.port), ChatHandler)
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()
         logger.info("ChatServer started on %s:%d", self.host, self.port)
 
     def stop(self) -> None:
-        # Trigger session summarization before shutdown
         if ChatHandler.runner is not None:
             try:
                 loop = asyncio.new_event_loop()
@@ -231,4 +259,8 @@ class ChatServer:
         if self._thread is not None:
             self._thread.join(timeout=5)
             self._thread = None
+        # Close the shared event loop
+        if ChatHandler._loop is not None and not ChatHandler._loop.is_closed():
+            ChatHandler._loop.close()
+            ChatHandler._loop = None
         logger.info("ChatServer stopped")

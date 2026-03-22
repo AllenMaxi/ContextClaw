@@ -60,7 +60,12 @@ class OllamaProvider:
             func = tc.get("function", {})
             arguments = func.get("arguments", {})
             if isinstance(arguments, str):
-                arguments = json.loads(arguments)
+                try:
+                    arguments = json.loads(arguments)
+                except (json.JSONDecodeError, TypeError):
+                    arguments = {"_raw": arguments}
+            if not isinstance(arguments, dict):
+                arguments = {"_raw": arguments}
             tool_calls.append(
                 ToolCall(
                     id=tc.get("id", ""),

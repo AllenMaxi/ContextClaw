@@ -14,6 +14,12 @@ import time
 from typing import Any
 
 
+# Standard LogRecord attribute names — computed once at import time.
+_STANDARD_RECORD_ATTRS: frozenset[str] = frozenset(
+    logging.LogRecord("", 0, "", 0, "", (), None).__dict__
+)
+
+
 class StructuredFormatter(logging.Formatter):
     """JSON-lines formatter for structured log output.
 
@@ -35,9 +41,8 @@ class StructuredFormatter(logging.Formatter):
         if record.exc_info and record.exc_info[1] is not None:
             entry["exception"] = self.formatException(record.exc_info)
         # Merge extra fields (skip standard LogRecord attributes)
-        _STANDARD = set(logging.LogRecord("", 0, "", 0, "", (), None).__dict__)
         for key, value in record.__dict__.items():
-            if key not in _STANDARD and key not in entry:
+            if key not in _STANDARD_RECORD_ATTRS and key not in entry:
                 entry[key] = value
         return json.dumps(entry, default=str)
 

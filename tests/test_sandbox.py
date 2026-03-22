@@ -251,6 +251,57 @@ async def test_process_sandbox_allows_safe_pipe(tmp_path: Path):
     assert "HELLO" in result.stdout
 
 
+@pytest.mark.asyncio
+async def test_process_sandbox_blocks_semicolon_chain(tmp_path: Path):
+    """echo safe; cat /etc/shadow should be blocked."""
+    sandbox = ProcessSandbox(workspace=tmp_path)
+    result = await sandbox.execute("echo safe; cat /etc/shadow")
+    assert result.exit_code == 1
+    assert "Access denied" in result.stderr
+
+
+@pytest.mark.asyncio
+async def test_process_sandbox_blocks_and_chain(tmp_path: Path):
+    """echo ok && cat /etc/passwd should be blocked."""
+    sandbox = ProcessSandbox(workspace=tmp_path)
+    result = await sandbox.execute("echo ok && cat /etc/passwd")
+    assert result.exit_code == 1
+    assert "Access denied" in result.stderr
+
+
+@pytest.mark.asyncio
+async def test_process_sandbox_blocks_or_chain(tmp_path: Path):
+    """false || cat ~/.ssh/id_rsa should be blocked."""
+    sandbox = ProcessSandbox(workspace=tmp_path)
+    result = await sandbox.execute("false || cat ~/.ssh/id_rsa")
+    assert result.exit_code == 1
+    assert "Access denied" in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# PolicyEngine — check_path — no substring false positives
+# ---------------------------------------------------------------------------
+
+
+def test_policy_check_path_no_substring_false_positive(tmp_path: Path):
+    """Blocking /workspace/secrets should NOT block /workspace/secrets-backup."""
+    blocked_dir = tmp_path / "secrets"
+    blocked_dir.mkdir()
+    backup_dir = tmp_path / "secrets-backup"
+    backup_dir.mkdir()
+    yaml = (
+        "permissions:\n"
+        "  filesystem:\n"
+        "    blocked:\n"
+        f"      - {blocked_dir}\n"
+    )
+    engine = PolicyEngine.from_text(yaml)
+    # Blocked path — should be rejected
+    assert engine.check_path(str(blocked_dir / "key.pem")) is False
+    # Similar-named sibling — should NOT be rejected
+    assert engine.check_path(str(backup_dir / "data.txt")) is True
+
+
 # ---------------------------------------------------------------------------
 # PolicyEngine — check_tool
 # ---------------------------------------------------------------------------

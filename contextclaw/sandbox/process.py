@@ -65,8 +65,8 @@ def _extract_path_tokens(command: str) -> list[str]:
 def _extract_paths_from_subshells(command: str) -> list[str]:
     """Extract path-like strings from inside shell metacharacters.
 
-    Catches paths embedded in $(...), `...`, and pipe chains that
-    the shlex tokeniser would miss or treat as a single token.
+    Catches paths embedded in $(...), `...`, pipe chains, semicolons,
+    and logical operators (&&, ||) that the shlex tokeniser would miss.
     """
     # Pull out the inner content of $() and `` substitutions
     inner_parts: list[str] = []
@@ -75,8 +75,9 @@ def _extract_paths_from_subshells(command: str) -> list[str]:
     for m in re.finditer(r"`(.+?)`", command, re.DOTALL):
         inner_parts.append(m.group(1))
 
-    # Also scan pipe-separated segments: cmd1 | cmd2
-    for segment in command.split("|"):
+    # Split on shell separators: pipes, semicolons, && and ||
+    segments = re.split(r"\|{1,2}|;|&&", command)
+    for segment in segments:
         inner_parts.append(segment.strip())
 
     # Extract path tokens from each inner part
@@ -125,17 +126,25 @@ class ProcessSandbox:
     blocked_paths: list[str] = field(
         default_factory=lambda: list(_DEFAULT_BLOCKED)
     )
+    _resolved_blocked_cache: list[tuple[str, Path]] = field(
+        default=None, init=False, repr=False  # type: ignore[assignment]
+    )
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
     def _resolved_blocked(self) -> list[tuple[str, Path]]:
-        """Return (original, resolved) pairs for each blocked path."""
-        pairs: list[tuple[str, Path]] = []
-        for p in self.blocked_paths:
-            pairs.append((p, _resolve_path(p)))
-        return pairs
+        """Return (original, resolved) pairs for each blocked path.
+
+        Computed once and cached for the lifetime of the sandbox instance.
+        """
+        if self._resolved_blocked_cache is None:
+            pairs: list[tuple[str, Path]] = []
+            for p in self.blocked_paths:
+                pairs.append((p, _resolve_path(p)))
+            self._resolved_blocked_cache = pairs
+        return self._resolved_blocked_cache
 
     def _check_paths_against_blocked(
         self,

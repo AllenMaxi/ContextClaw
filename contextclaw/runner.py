@@ -254,10 +254,7 @@ class AgentRunner:
 
     def _get_last_assistant_content(self) -> str:
         """Return the last assistant message content, or empty string."""
-        for msg in reversed(self.session._messages):
-            if msg.role == "assistant" and msg.content:
-                return msg.content
-        return ""
+        return self.session.last_assistant_message
 
     async def close_session(self) -> list[dict]:
         """Summarize and store session knowledge to ContextGraph.

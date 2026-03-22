@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Literal
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -78,7 +81,10 @@ def _parse_policy_yaml(text: str) -> dict:
             if indent < base_indent:
                 break
             if indent != base_indent:
-                # Unexpected deeper indent — skip (robustness)
+                logger.warning(
+                    "Policy YAML: unexpected indent at line %d, skipping: %s",
+                    i + 1, content,
+                )
                 i += 1
                 continue
             if ":" in content:
@@ -155,10 +161,13 @@ class PolicyEngine:
         self._require_confirm: set[str] = set(_as_list(self._tools_cfg.get("require_confirm", [])))
         self._blocked_tools: set[str] = set(_as_list(self._tools_cfg.get("blocked", [])))
 
-        # Filesystem lists
-        self._allowed_paths: list[str] = _as_list(self._fs_cfg.get("allowed", []))
-        self._blocked_paths: list[str] = [
-            str(Path(p).expanduser())
+        # Filesystem lists — resolve to absolute paths for containment checks
+        self._allowed_paths: list[Path] = [
+            Path(p).expanduser().resolve()
+            for p in _as_list(self._fs_cfg.get("allowed", []))
+        ]
+        self._blocked_paths: list[Path] = [
+            Path(p).expanduser().resolve()
             for p in _as_list(self._fs_cfg.get("blocked", []))
         ]
 
@@ -202,19 +211,24 @@ class PolicyEngine:
         not start with any entry in *blocked*.  If no allowed paths are
         configured every path passes the allow check (permissive by default).
         """
-        resolved = str(Path(path).expanduser().resolve())
+        resolved = Path(path).expanduser().resolve()
 
-        # Check blocked first
+        # Check blocked first — use path containment, not string prefix
         for blocked in self._blocked_paths:
-            if resolved.startswith(blocked):
+            try:
+                resolved.relative_to(blocked)
                 return False
+            except ValueError:
+                continue
 
-        # Check allowed (if configured)
+        # Check allowed (if configured) — use path containment
         if self._allowed_paths:
             for allowed in self._allowed_paths:
-                allowed_resolved = str(Path(allowed).expanduser().resolve())
-                if resolved.startswith(allowed_resolved):
+                try:
+                    resolved.relative_to(allowed)
                     return True
+                except ValueError:
+                    continue
             return False  # Not in any allowed path
 
         return True  # No allow-list configured → permissive

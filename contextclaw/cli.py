@@ -5,6 +5,10 @@ import asyncio
 import json
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .config.agent_config import AgentConfig
 
 AGENTS_DIR = Path.home() / ".contextclaw" / "agents"
 
@@ -215,7 +219,7 @@ def cmd_link(args: argparse.Namespace) -> None:
     print(f"Linked '{args.name}' to ContextGraph at {args.cg_url}")
 
 
-def _create_provider(config):
+def _create_provider(config: AgentConfig) -> Any:
     """Create the LLM provider based on config."""
     if config.provider == "claude":
         from .providers.claude import ClaudeProvider
@@ -233,7 +237,7 @@ def _create_provider(config):
         raise ValueError(f"Unknown provider: {config.provider}")
 
 
-def _create_sandbox(config):
+def _create_sandbox(config: AgentConfig) -> Any:
     """Create sandbox based on config. Returns None for 'none' type."""
     if config.sandbox_type == "docker":
         from .sandbox.docker import DockerSandbox

@@ -79,6 +79,14 @@ class ChatSession:
                     return msg.content
         return ""
 
+    @property
+    def last_assistant_message(self) -> str:
+        with self._lock:
+            for msg in reversed(self._messages):
+                if msg.role == "assistant" and msg.content:
+                    return msg.content
+        return ""
+
     def get_summary_context(self) -> str:
         """Return a compact summary of the conversation for knowledge extraction.
 
