@@ -44,6 +44,22 @@ Then adds what none of them have: **cross-session memory** via ContextGraph.
 
 **The honest version:** ContextClaw isn't the smallest (that's NanoClaw) or the most battle-tested (that's OpenClaw). It's the one you pick when you need agents that **remember things between sessions** and **discover each other** through a shared knowledge graph. If you don't need cross-session memory, NanoClaw is simpler. If you just need a single Claude agent, OpenClaw works fine.
 
+### Current Scope
+
+ContextClaw now covers the core "deep agent" runtime path well: built-in and
+MCP-backed tools, policy-gated execution, task delegation to sub-agents,
+session checkpoints, and ContextGraph-powered memory.
+
+It is not yet at full parity with every connector or packaged integration in
+the wider Claw family. The main remaining gap is ecosystem breadth rather than
+runtime depth: a broader first-party connector or MCP catalog and a larger set
+of reusable packaged skills.
+
+The short version:
+
+- The runtime pieces are in place and working.
+- The biggest remaining investment is more turnkey connectors and skills.
+
 ## Quick Start
 
 ```bash
