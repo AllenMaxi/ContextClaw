@@ -100,6 +100,12 @@ def test_register_bundle_filesystem(tmp_path: Path):
     assert "filesystem_read" in names
     assert "filesystem_write" in names
     assert "filesystem_list" in names
+    assert "read_file" in names
+    assert "write_file" in names
+    assert "ls" in names
+    assert "edit_file" in names
+    assert "glob" in names
+    assert "grep" in names
 
 
 def test_register_bundle_web(tmp_path: Path):
@@ -115,6 +121,15 @@ def test_register_bundle_shell():
     manager.register_bundle("shell")
     names = {t["name"] for t in manager.list_tools()}
     assert "shell_execute" in names
+    assert "execute" in names
+
+
+def test_register_bundle_planning():
+    manager = ToolManager()
+    manager.register_bundle("planning")
+    names = {t["name"] for t in manager.list_tools()}
+    assert "write_todos" in names
+    assert "read_todos" in names
 
 
 def test_register_bundle_custom(tmp_path: Path):
@@ -139,7 +154,16 @@ def test_register_bundle_custom(tmp_path: Path):
 
 def test_load_bundle_valid():
     tools = load_bundle("shell")
-    assert any(t.name == "shell_execute" for t in tools)
+    names = {t.name for t in tools}
+    assert "shell_execute" in names
+    assert "execute" in names
+
+
+def test_load_bundle_planning():
+    tools = load_bundle("planning")
+    names = {t.name for t in tools}
+    assert "write_todos" in names
+    assert "read_todos" in names
 
 
 def test_load_bundle_invalid_name_raises_key_error():

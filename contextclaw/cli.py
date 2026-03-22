@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -26,7 +27,7 @@ def cmd_create(args: argparse.Namespace) -> None:
         "name": args.name,
         "provider": provider,
         "sandbox_type": "process",
-        "tools": "filesystem,web,shell",
+        "tools": "filesystem,web,shell,planning",
     }
     config_text = "\n".join(f"{k}: {v}" for k, v in config.items())
     (workspace / "config.yaml").write_text(config_text)
@@ -80,40 +81,29 @@ def cmd_chat(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     from .config import AgentConfig
+    from .runtime import (
+        create_knowledge,
+        create_policy,
+        create_provider,
+        create_sandbox,
+        create_tools_sync,
+    )
 
     # Build the runner
     config = AgentConfig.from_dir(workspace)
 
     # Create provider
-    provider = _create_provider(config)
+    provider = create_provider(config)
 
     # Create sandbox
-    sandbox = _create_sandbox(config)
-
-    # Create tools
-    from .tools import ToolManager
-
-    tools = ToolManager()
-    for bundle_name in config.tools:
-        tools.register_bundle(bundle_name)
+    sandbox = create_sandbox(config)
+    tools = create_tools_sync(config)
 
     # Create knowledge bridge if configured
-    knowledge = None
-    if config.cg_url:
-        from .knowledge import ContextGraphBridge
-
-        knowledge = ContextGraphBridge(
-            cg_url=config.cg_url,
-            api_key=config.cg_api_key,
-            agent_id=config.agent_id,
-        )
+    knowledge = create_knowledge(config)
 
     # Create policy engine
-    policy = None
-    if config.policy_path and config.policy_path.exists():
-        from .sandbox.policy import PolicyEngine
-
-        policy = PolicyEngine.from_file(config.policy_path)
+    policy = create_policy(config)
 
     # Create runner
     from .runner import AgentRunner
@@ -125,6 +115,8 @@ def cmd_chat(args: argparse.Namespace) -> None:
         tools=tools,
         knowledge=knowledge,
         policy=policy,
+        tool_approver=_cli_tool_approver,
+        provider_factory=create_provider,
     )
 
     print(f"Chatting with '{args.name}'. Type 'exit' or Ctrl+C to quit.\n")
@@ -159,8 +151,17 @@ def cmd_chat(args: argparse.Namespace) -> None:
                 print(f"\n[Stored {len(stored)} memories to ContextGraph]")
             if sandbox:
                 await sandbox.stop()
+            await tools.stop_all()
 
     asyncio.run(chat_loop())
+
+
+async def _cli_tool_approver(tool_call: Any) -> bool:
+    """Ask the operator to approve a tool call."""
+    args_preview = json.dumps(tool_call.arguments, ensure_ascii=True)
+    prompt = f"Approve tool '{tool_call.name}' with arguments {args_preview}? [y/N]: "
+    answer = await asyncio.to_thread(input, prompt)
+    return answer.strip().lower() in {"y", "yes"}
 
 
 def cmd_status(args: argparse.Namespace) -> None:
@@ -180,6 +181,10 @@ def cmd_status(args: argparse.Namespace) -> None:
     print(f"Sandbox: {config.sandbox_type}")
     print(f"Tools: {', '.join(config.tools) if config.tools else 'none'}")
     print(f"ContextGraph: {'linked' if config.cg_url else 'not linked'}")
+    print(f"Skills: {config.skills_path if config.skills_path else 'none'}")
+    print(f"MCP Registry: {config.mcp_servers_path if config.mcp_servers_path else 'none'}")
+    print(f"Subagents: {config.subagents_path if config.subagents_path else 'none'}")
+    print(f"Checkpoint: {config.checkpoint_path if config.checkpoint_path else 'none'}")
     if config.agent_id:
         print(f"Agent ID: {config.agent_id}")
 
@@ -219,37 +224,6 @@ def cmd_link(args: argparse.Namespace) -> None:
 
     config_path.write_text("\n".join(lines) + "\n")
     print(f"Linked '{args.name}' to ContextGraph at {args.cg_url}")
-
-
-def _create_provider(config: AgentConfig) -> Any:
-    """Create the LLM provider based on config."""
-    if config.provider == "claude":
-        from .providers.claude import ClaudeProvider
-
-        return ClaudeProvider(model=config.model or "claude-sonnet-4-20250514")
-    elif config.provider == "openai":
-        from .providers.openai import OpenAIProvider
-
-        return OpenAIProvider(model=config.model or "gpt-4o")
-    elif config.provider == "ollama":
-        from .providers.ollama import OllamaProvider
-
-        return OllamaProvider(model=config.model or "llama3.2")
-    else:
-        raise ValueError(f"Unknown provider: {config.provider}")
-
-
-def _create_sandbox(config: AgentConfig) -> Any:
-    """Create sandbox based on config. Returns None for 'none' type."""
-    if config.sandbox_type == "docker":
-        from .sandbox.docker import DockerSandbox
-
-        return DockerSandbox(workspace=config.workspace)
-    elif config.sandbox_type == "process":
-        from .sandbox.process import ProcessSandbox
-
-        return ProcessSandbox(workspace=config.workspace)
-    return None
 
 
 def main() -> None:
