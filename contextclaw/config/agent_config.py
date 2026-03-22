@@ -49,6 +49,14 @@ def _resolve_env(value: str, env_fallback: str = "") -> str:
     return value
 
 
+def _resolve_config_path(value: str, base_dir: Path) -> Path:
+    """Resolve a config path relative to the config file directory."""
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        path = base_dir / path
+    return path.resolve()
+
+
 @dataclass
 class AgentConfig:
     name: str
@@ -67,17 +75,19 @@ class AgentConfig:
     def from_yaml(cls, path: Path) -> AgentConfig:
         """Load config from a YAML file (config.yaml in agent workspace)."""
         raw = _parse_simple_yaml(path.read_text(encoding="utf-8"))
+        base_dir = path.parent.resolve()
 
-        workspace = Path(raw.get("workspace", str(path.parent)))
+        workspace_raw = raw.get("workspace", "")
+        workspace = _resolve_config_path(workspace_raw, base_dir) if workspace_raw else base_dir
 
         tools_raw = raw.get("tools", "")
         tools = [t.strip() for t in tools_raw.split(",") if t.strip()] if tools_raw else []
 
         soul_raw = raw.get("soul_path", "")
-        soul_path = Path(soul_raw) if soul_raw else None
+        soul_path = _resolve_config_path(soul_raw, base_dir) if soul_raw else None
 
         policy_raw = raw.get("policy_path", "")
-        policy_path = Path(policy_raw) if policy_raw else None
+        policy_path = _resolve_config_path(policy_raw, base_dir) if policy_raw else None
 
         # Resolve credentials — support ${ENV_VAR} and env:ENV_VAR syntax,
         # with fallback to well-known environment variable names

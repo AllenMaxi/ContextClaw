@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from contextclaw.config.agent_config import AgentConfig, _resolve_env
+from contextclaw.config.agent_config import AgentConfig, _resolve_config_path, _resolve_env
 from contextclaw.config.soul import SoulConfig, load_soul
 
 # ---------------------------------------------------------------------------
@@ -108,6 +108,28 @@ def test_from_yaml_policy_path(tmp_path: Path):
     assert config.policy_path == policy_file
 
 
+def test_from_yaml_resolves_relative_paths_against_config_dir(tmp_path: Path):
+    workspace_dir = tmp_path / "workspace"
+    workspace_dir.mkdir()
+    soul_file = tmp_path / "relative" / "SOUL.md"
+    soul_file.parent.mkdir()
+    soul_file.write_text("# Soul", encoding="utf-8")
+    policy_file = tmp_path / "policies" / "default.yaml"
+    policy_file.parent.mkdir()
+    policy_file.write_text("permissions:\n  tools:\n", encoding="utf-8")
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "name: relative-agent\nworkspace: workspace\nsoul_path: relative/SOUL.md\npolicy_path: policies/default.yaml\n",
+        encoding="utf-8",
+    )
+
+    config = AgentConfig.from_yaml(config_file)
+
+    assert config.workspace == workspace_dir.resolve()
+    assert config.soul_path == soul_file.resolve()
+    assert config.policy_path == policy_file.resolve()
+
+
 # ---------------------------------------------------------------------------
 # AgentConfig.from_dir
 # ---------------------------------------------------------------------------
@@ -158,6 +180,15 @@ def test_from_dir_explicit_soul_path_not_overridden(tmp_path: Path):
     config_file.write_text(f"name: agent\nsoul_path: {explicit_soul}\n", encoding="utf-8")
     config = AgentConfig.from_dir(tmp_path)
     assert config.soul_path == explicit_soul
+
+
+def test_resolve_config_path_resolves_relative_and_absolute_paths(tmp_path: Path):
+    relative = _resolve_config_path("nested/file.txt", tmp_path)
+    absolute_target = (tmp_path / "absolute.txt").resolve()
+    absolute = _resolve_config_path(str(absolute_target), tmp_path)
+
+    assert relative == (tmp_path / "nested" / "file.txt").resolve()
+    assert absolute == absolute_target
 
 
 # ---------------------------------------------------------------------------
