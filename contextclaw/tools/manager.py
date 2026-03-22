@@ -19,6 +19,8 @@ class ToolManager:
     def __init__(self) -> None:
         self._tools: dict[str, ToolDefinition] = {}
         self._processes: dict[str, asyncio.subprocess.Process] = {}
+        self._mcp_clients: dict[str, Any] = {}
+        self._mcp_tool_bindings: dict[str, tuple[str, str]] = {}
 
     # ------------------------------------------------------------------
     # Registration
@@ -92,6 +94,37 @@ class ToolManager:
         names = list(self._processes.keys())
         for name in names:
             await self.stop_mcp_server(name)
+        client_names = list(self._mcp_clients.keys())
+        for name in client_names:
+            client = self._mcp_clients.pop(name)
+            await client.stop()
+
+    async def load_mcp_registry(self, path: Path) -> None:
+        """Start MCP servers from a registry file and register their tools."""
+        from ..config.agent_config import _resolve_env
+        from .mcp import MCPServerClient, load_mcp_registry_config
+
+        for server in load_mcp_registry_config(path, _resolve_env):
+            client = MCPServerClient(server)
+            await client.start()
+            self._mcp_clients[server.name] = client
+            remote_tools = await client.list_tools()
+            for tool in remote_tools:
+                remote_name = str(tool.get("name", "")).strip()
+                if not remote_name:
+                    continue
+                local_name = f"mcp__{server.name}__{remote_name}"
+                params = tool.get("inputSchema", tool.get("parameters", {}))
+                description = str(tool.get("description", "")).strip()
+                prefix = f"[MCP:{server.name}] "
+                self.register(
+                    ToolDefinition(
+                        name=local_name,
+                        description=prefix + description if description else prefix + remote_name,
+                        parameters=params if isinstance(params, dict) else {},
+                    )
+                )
+                self._mcp_tool_bindings[local_name] = (server.name, remote_name)
 
     # ------------------------------------------------------------------
     # Tool access
@@ -111,3 +144,15 @@ class ToolManager:
     def get_tool(self, name: str) -> ToolDefinition | None:
         """Return a tool by name, or None if not registered."""
         return self._tools.get(name)
+
+    def is_mcp_tool(self, name: str) -> bool:
+        return name in self._mcp_tool_bindings
+
+    async def call_mcp_tool(self, name: str, arguments: dict[str, Any]) -> str:
+        if name not in self._mcp_tool_bindings:
+            raise KeyError(f"Unknown MCP tool '{name}'")
+        server_name, remote_name = self._mcp_tool_bindings[name]
+        client = self._mcp_clients.get(server_name)
+        if client is None:
+            raise RuntimeError(f"MCP server '{server_name}' is not running")
+        return await client.call_tool(remote_name, arguments)

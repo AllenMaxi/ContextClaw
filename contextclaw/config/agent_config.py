@@ -64,7 +64,11 @@ class AgentConfig:
     provider: str = "claude"  # claude | openai | ollama
     model: str = ""  # empty = provider default
     soul_path: Path | None = None  # path to SOUL.md
+    skills_path: Path | None = None  # path to a skills directory or markdown file
     policy_path: Path | None = None  # path to policy YAML
+    mcp_servers_path: Path | None = None  # path to an MCP registry JSON file
+    subagents_path: Path | None = None  # path to sub-agent workspaces
+    checkpoint_path: Path | None = None  # path to session checkpoint JSON
     sandbox_type: str = "process"  # docker | process | none
     tools: list[str] = field(default_factory=list)  # tool bundle names
     cg_url: str = ""  # ContextGraph server URL
@@ -90,6 +94,26 @@ class AgentConfig:
         soul_raw = raw.get("soul_path", "")
         soul_path = _resolve_config_path(soul_raw, base_dir) if soul_raw else None
 
+        skills_raw = raw.get("skills_path", "")
+        skills_path = (
+            _resolve_config_path(skills_raw, base_dir) if skills_raw else None
+        )
+
+        mcp_raw = raw.get("mcp_servers_path", "")
+        mcp_servers_path = (
+            _resolve_config_path(mcp_raw, base_dir) if mcp_raw else None
+        )
+
+        subagents_raw = raw.get("subagents_path", "")
+        subagents_path = (
+            _resolve_config_path(subagents_raw, base_dir) if subagents_raw else None
+        )
+
+        checkpoint_raw = raw.get("checkpoint_path", "")
+        checkpoint_path = (
+            _resolve_config_path(checkpoint_raw, base_dir) if checkpoint_raw else None
+        )
+
         policy_raw = raw.get("policy_path", "")
         policy_path = _resolve_config_path(policy_raw, base_dir) if policy_raw else None
 
@@ -106,7 +130,11 @@ class AgentConfig:
             provider=raw.get("provider", "claude"),
             model=raw.get("model", ""),
             soul_path=soul_path,
+            skills_path=skills_path,
             policy_path=policy_path,
+            mcp_servers_path=mcp_servers_path,
+            subagents_path=subagents_path,
+            checkpoint_path=checkpoint_path,
             sandbox_type=raw.get("sandbox_type", "process"),
             tools=tools,
             cg_url=raw.get("cg_url", ""),
@@ -134,5 +162,24 @@ class AgentConfig:
             soul_file = workspace / "SOUL.md"
             if soul_file.exists():
                 config.soul_path = soul_file.resolve()
+
+        # Auto-discover a skills directory when not explicitly set
+        if config.skills_path is None:
+            skills_dir = workspace / "skills"
+            if skills_dir.exists() and skills_dir.is_dir():
+                config.skills_path = skills_dir.resolve()
+
+        if config.mcp_servers_path is None:
+            mcp_file = workspace / "mcp_servers.json"
+            if mcp_file.exists():
+                config.mcp_servers_path = mcp_file.resolve()
+
+        if config.subagents_path is None:
+            subagents_dir = workspace / "subagents"
+            if subagents_dir.exists() and subagents_dir.is_dir():
+                config.subagents_path = subagents_dir.resolve()
+
+        if config.checkpoint_path is None:
+            config.checkpoint_path = (workspace / ".contextclaw" / "session.json").resolve()
 
         return config

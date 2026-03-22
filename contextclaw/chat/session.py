@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 import threading
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 
@@ -13,6 +15,25 @@ class Message:
     timestamp: float = field(default_factory=time.time)
     tool_call_id: str = ""
     tool_calls: list[dict] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "role": self.role,
+            "content": self.content,
+            "timestamp": self.timestamp,
+            "tool_call_id": self.tool_call_id,
+            "tool_calls": list(self.tool_calls),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Message:
+        return cls(
+            role=str(data.get("role", "")),
+            content=str(data.get("content", "")),
+            timestamp=float(data.get("timestamp", time.time())),
+            tool_call_id=str(data.get("tool_call_id", "")),
+            tool_calls=list(data.get("tool_calls", [])),
+        )
 
 
 class ChatSession:
@@ -68,6 +89,52 @@ class ChatSession:
                 entry["tool_calls"] = m.tool_calls
             result.append(entry)
         return result
+
+    def to_dict(self) -> dict[str, Any]:
+        with self._lock:
+            snapshot = list(self._messages)
+        return {
+            "system_prompt": self.system_prompt,
+            "max_history": self.max_history,
+            "messages": [message.to_dict() for message in snapshot],
+        }
+
+    @classmethod
+    def from_dict(
+        cls,
+        data: dict[str, Any],
+        *,
+        system_prompt: str = "",
+        max_history: int | None = None,
+    ) -> ChatSession:
+        session = cls(
+            system_prompt=system_prompt or str(data.get("system_prompt", "")),
+            max_history=max_history or int(data.get("max_history", 100)),
+        )
+        session._messages = [
+            Message.from_dict(item)
+            for item in list(data.get("messages", []))
+            if isinstance(item, dict)
+        ]
+        session._trim()
+        return session
+
+    def save(self, path: Path) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(self.to_dict(), ensure_ascii=True, indent=2), encoding="utf-8")
+
+    @classmethod
+    def load(
+        cls,
+        path: Path,
+        *,
+        system_prompt: str = "",
+        max_history: int | None = None,
+    ) -> ChatSession:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError("Session checkpoint must contain a JSON object")
+        return cls.from_dict(data, system_prompt=system_prompt, max_history=max_history)
 
     def clear(self) -> None:
         with self._lock:

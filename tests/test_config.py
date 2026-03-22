@@ -9,6 +9,7 @@ from contextclaw.config.agent_config import (
     _resolve_config_path,
     _resolve_env,
 )
+from contextclaw.config.skills import load_skills, render_skills_prompt
 from contextclaw.config.soul import SoulConfig, load_soul
 
 # ---------------------------------------------------------------------------
@@ -114,6 +115,18 @@ def test_from_yaml_policy_path(tmp_path: Path):
     assert config.policy_path == policy_file
 
 
+def test_from_yaml_skills_path(tmp_path: Path):
+    skills_dir = tmp_path / "skills"
+    skills_dir.mkdir()
+    (skills_dir / "plan.md").write_text("Use checklists.", encoding="utf-8")
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("name: agent\nskills_path: skills\n", encoding="utf-8")
+
+    config = AgentConfig.from_yaml(config_file)
+
+    assert config.skills_path == skills_dir.resolve()
+
+
 def test_from_yaml_resolves_relative_paths_against_config_dir(tmp_path: Path):
     workspace_dir = tmp_path / "workspace"
     workspace_dir.mkdir()
@@ -176,6 +189,16 @@ def test_from_dir_no_soul_md_soul_path_none(tmp_path: Path):
     assert config.soul_path is None
 
 
+def test_from_dir_auto_discovers_skills_dir(tmp_path: Path):
+    skills_dir = tmp_path / "skills"
+    skills_dir.mkdir()
+    (skills_dir / "review.md").write_text("Review carefully.", encoding="utf-8")
+
+    config = AgentConfig.from_dir(tmp_path)
+
+    assert config.skills_path == skills_dir.resolve()
+
+
 def test_from_dir_explicit_soul_path_not_overridden(tmp_path: Path):
     """An explicit soul_path in config.yaml should not be replaced by SOUL.md auto-discovery."""
     explicit_soul = tmp_path / "custom_soul.md"
@@ -188,6 +211,30 @@ def test_from_dir_explicit_soul_path_not_overridden(tmp_path: Path):
     )
     config = AgentConfig.from_dir(tmp_path)
     assert config.soul_path == explicit_soul
+
+
+def test_load_skills_from_directory(tmp_path: Path):
+    skills_dir = tmp_path / "skills"
+    skills_dir.mkdir()
+    (skills_dir / "plan.md").write_text("Break work into steps.", encoding="utf-8")
+    nested = skills_dir / "research"
+    nested.mkdir()
+    (nested / "compare.md").write_text("Compare sources carefully.", encoding="utf-8")
+
+    skills = load_skills(skills_dir)
+
+    assert [label for label, _ in skills] == ["plan.md", "research/compare.md"]
+
+
+def test_render_skills_prompt(tmp_path: Path):
+    skill_file = tmp_path / "skill.md"
+    skill_file.write_text("Always verify with tests.", encoding="utf-8")
+
+    prompt = render_skills_prompt(skill_file)
+
+    assert "Additional skills are available" in prompt
+    assert "[Skill: skill.md]" in prompt
+    assert "Always verify with tests." in prompt
 
 
 def test_resolve_config_path_resolves_relative_and_absolute_paths(tmp_path: Path):

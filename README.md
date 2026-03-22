@@ -34,12 +34,31 @@ Then adds what none of them have: **cross-session memory** via ContextGraph.
 | Policy guardrails | Basic | None | YAML | **YAML + path resolution** |
 | Cross-session memory | None | None | None | **ContextGraph integration** |
 | Agent discovery | None | None | None | **Trust-scored discovery** |
-| Tool management | Hardcoded | Hardcoded | MCP | **MCP bundles** |
+| Tool management | Hardcoded | Hardcoded | MCP | **Built-in tools, deep-agent aliases, + MCP-ready bundles** |
 | Shell metachar detection | None | None | None | **Multi-pass scanning** |
+| Planning workflow | None | None | None | **Built-in `write_todos` + `read_todos`** |
+| Human approval | None | None | Limited | **Policy-driven tool confirmation** |
+| Skills loading | None | None | None | **Markdown skill packs per agent** |
 | Rate limiting | None | None | None | **Configurable per-agent** |
 | Structured logging | None | None | None | **JSON-lines + human** |
 
 **The honest version:** ContextClaw isn't the smallest (that's NanoClaw) or the most battle-tested (that's OpenClaw). It's the one you pick when you need agents that **remember things between sessions** and **discover each other** through a shared knowledge graph. If you don't need cross-session memory, NanoClaw is simpler. If you just need a single Claude agent, OpenClaw works fine.
+
+### Current Scope
+
+ContextClaw now covers the core "deep agent" runtime path well: built-in and
+MCP-backed tools, policy-gated execution, task delegation to sub-agents,
+session checkpoints, and ContextGraph-powered memory.
+
+It is not yet at full parity with every connector or packaged integration in
+the wider Claw family. The main remaining gap is ecosystem breadth rather than
+runtime depth: a broader first-party connector or MCP catalog and a larger set
+of reusable packaged skills.
+
+The short version:
+
+- The runtime pieces are in place and working.
+- The biggest remaining investment is more turnkey connectors and skills.
 
 ## Quick Start
 
@@ -54,7 +73,7 @@ cclaw create research-bot --template research --provider claude
 cclaw chat research-bot
 ```
 
-That's it. Three commands to a working agent with sandbox isolation and tool access.
+That's it. Three commands to a working agent with sandbox isolation, tool access, and built-in planning tools.
 
 ### Link to ContextGraph (optional)
 
@@ -74,6 +93,17 @@ Now your agent will:
 1. **Recall** relevant knowledge before each turn
 2. **Store** significant outputs after each turn
 3. **Summarize** the session on exit — extracting 0-5 key facts worth remembering
+
+## Demo
+
+[![ContextClaw promo demo](../docs/assets/contextclaw-promo.gif)](../docs/assets/contextclaw-promo.mp4)
+
+Generate the vertical demo asset and walkthrough:
+
+```bash
+python3 ../examples/contextclaw_promo.py
+python3 ../scripts/render_contextclaw_promo.py
+```
 
 ## Architecture
 
@@ -193,6 +223,95 @@ sandbox:
   type: docker
 ```
 
+Tools marked `require_confirm` now prompt the operator during `cclaw chat`
+before execution.
+
+### Built-in Tools and Planning
+
+ContextClaw ships with working built-in tools for:
+
+- `filesystem_read`
+- `filesystem_write`
+- `filesystem_list`
+- `read_file`
+- `write_file`
+- `ls`
+- `edit_file`
+- `glob`
+- `grep`
+- `web_fetch`
+- `web_search`
+- `shell_execute`
+- `execute`
+- `write_todos`
+- `read_todos`
+
+Filesystem tools are scoped to the agent workspace by default. `write_todos`
+creates a lightweight task plan in `.contextclaw/todos.md`, which gives the
+agent a simple planning loop similar to the stronger "deep agent" UX. The
+deep-agent-style aliases (`read_file`, `write_file`, `ls`, `edit_file`, `glob`,
+`grep`, `execute`, `read_todos`) map cleanly onto the same ContextClaw runtime,
+so migrating prompts is low-friction.
+
+### MCP Registry and Invocation
+
+Agents can auto-discover an `mcp_servers.json` file in their workspace and
+start MCP servers on chat startup. Each discovered MCP tool is registered as a
+first-class model tool using the name format:
+
+```text
+mcp__<server_name>__<tool_name>
+```
+
+Example registry:
+
+```json
+{
+  "servers": [
+    {
+      "name": "demo",
+      "command": ["python3", "mock_mcp_server.py"]
+    }
+  ]
+}
+```
+
+### Task Delegation
+
+If an agent workspace contains a `subagents/` directory with other
+ContextClaw-compatible workspaces, the parent agent automatically gets a
+`task` tool for delegating work to them with isolated context.
+
+```text
+my-agent/
+├── config.yaml
+├── SOUL.md
+└── subagents/
+    └── research-sub/
+        ├── config.yaml
+        └── SOUL.md
+```
+
+The parent can then delegate:
+
+```json
+{
+  "subagent": "research-sub",
+  "prompt": "Summarize the launch positioning."
+}
+```
+
+### Session Checkpoints
+
+By default, agent chats persist to:
+
+```text
+.contextclaw/session.json
+```
+
+That means long-lived agents automatically resume prior conversation state and
+token accounting the next time `cclaw chat` runs.
+
 ### SOUL.md — Agent Identity
 
 Define agent personality, role, and behavior in Markdown:
@@ -208,6 +327,24 @@ verbosity: concise
 You are a research assistant that finds, validates, and synthesizes
 information. Always cite your sources and flag uncertainty.
 ```
+
+### Skills
+
+Agents can also load reusable Markdown skill packs from a `skills/` directory
+inside the workspace or from a `skills_path` in `config.yaml`.
+
+```text
+my-agent/
+├── SOUL.md
+├── config.yaml
+└── skills/
+    ├── research.md
+    └── launch-checklist.md
+```
+
+Each skill file is appended to the system prompt as an extra capability block,
+making it easy to keep role instructions modular instead of overloading one
+large `SOUL.md`.
 
 ### Structured Logging
 
@@ -305,7 +442,7 @@ pip install pytest pytest-asyncio
 python -m pytest tests/ -v
 ```
 
-166 tests covering:
+189 tests covering:
 - Agent runner (ReAct loop, retry logic, tool validation, token tracking)
 - Sandbox (path traversal, shell metacharacters, Docker, timeouts)
 - Policy engine (tool/path permissions)
@@ -322,7 +459,9 @@ contextclaw/
 │   └── session.py       # Thread-safe conversation history
 ├── config/
 │   ├── agent_config.py  # YAML config with env var resolution
+│   ├── skills.py        # Markdown skill loading and prompt rendering
 │   └── soul.py          # SOUL.md parser
+├── runtime.py           # Shared runtime builders for providers/tools/policy
 ├── knowledge/
 │   └── bridge.py        # ContextGraph integration
 ├── providers/
@@ -337,7 +476,8 @@ contextclaw/
 │   └── policy.py        # YAML policy engine
 ├── tools/
 │   ├── manager.py       # Tool registry
-│   └── bundles.py       # Pre-built tool bundles
+│   ├── bundles.py       # Pre-built tool bundles
+│   └── mcp.py           # MCP stdio client and registry loading
 ├── runner.py            # AgentRunner (ReAct loop)
 ├── logging_config.py    # Structured logging setup
 └── cli.py               # CLI entry point
