@@ -14,7 +14,11 @@ def _parse_simple_yaml(text: str) -> dict[str, str]:
             continue
         if ":" in line:
             key, _, value = line.partition(":")
-            result[key.strip()] = value.strip()
+            value = value.strip()
+            # Strip inline comments
+            if " #" in value:
+                value = value[: value.index(" #")].rstrip()
+            result[key.strip()] = value
     return result
 
 

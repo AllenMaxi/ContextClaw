@@ -244,23 +244,30 @@ class ChatServer:
         logger.info("ChatServer started on %s:%d", self.host, self.port)
 
     def stop(self) -> None:
-        if ChatHandler.runner is not None:
-            try:
-                loop = asyncio.new_event_loop()
-                try:
-                    loop.run_until_complete(ChatHandler.runner.close_session())
-                finally:
-                    loop.close()
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Session summarization on shutdown failed: %s", exc)
+        # Stop accepting new requests first
         if self._server is not None:
             self._server.shutdown()
             self._server = None
         if self._thread is not None:
             self._thread.join(timeout=5)
             self._thread = None
-        # Close the shared event loop
-        if ChatHandler._loop is not None and not ChatHandler._loop.is_closed():
-            ChatHandler._loop.close()
-            ChatHandler._loop = None
+
+        # Acquire the runner lock to ensure no in-flight request is running,
+        # then summarise the session safely.
+        with ChatHandler._runner_lock:
+            if ChatHandler.runner is not None:
+                try:
+                    loop = asyncio.new_event_loop()
+                    try:
+                        loop.run_until_complete(ChatHandler.runner.close_session())
+                    finally:
+                        loop.close()
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Session summarization on shutdown failed: %s", exc)
+
+            # Close the shared event loop
+            if ChatHandler._loop is not None and not ChatHandler._loop.is_closed():
+                ChatHandler._loop.close()
+                ChatHandler._loop = None
+
         logger.info("ChatServer stopped")

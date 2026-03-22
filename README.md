@@ -302,7 +302,7 @@ pip install pytest pytest-asyncio
 python -m pytest tests/ -v
 ```
 
-152 tests covering:
+166 tests covering:
 - Agent runner (ReAct loop, retry logic, tool validation, token tracking)
 - Sandbox (path traversal, shell metacharacters, Docker, timeouts)
 - Policy engine (tool/path permissions)

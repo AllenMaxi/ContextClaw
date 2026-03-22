@@ -47,7 +47,7 @@ class OllamaProvider:
             with urllib.request.urlopen(req, timeout=120) as resp:
                 raw = json.loads(resp.read().decode())
         except urllib.error.URLError as e:
-            raise RuntimeError(
+            raise ConnectionError(
                 f"Could not reach Ollama at {self.base_url}. "
                 "Make sure Ollama is running (ollama serve)."
             ) from e
