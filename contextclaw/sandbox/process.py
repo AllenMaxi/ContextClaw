@@ -124,10 +124,10 @@ class ProcessSandbox:
     workspace: Path
     allowed_paths: list[str] = field(default_factory=list)
     blocked_paths: list[str] = field(default_factory=lambda: list(_DEFAULT_BLOCKED))
-    _resolved_blocked_cache: list[tuple[str, Path]] = field(
+    _resolved_blocked_cache: list[tuple[str, Path]] | None = field(
         default=None,
         init=False,
-        repr=False,  # type: ignore[assignment]
+        repr=False,
     )
 
     # ------------------------------------------------------------------
