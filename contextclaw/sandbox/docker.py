@@ -43,7 +43,9 @@ class DockerSandbox:
         try:
             import docker  # type: ignore[import-untyped]
         except ImportError as exc:
-            raise ImportError("docker SDK is required for DockerSandbox: pip install docker") from exc
+            raise ImportError(
+                "docker SDK is required for DockerSandbox: pip install docker"
+            ) from exc
 
         client = await asyncio.to_thread(docker.from_env)
         self._docker = client
@@ -52,7 +54,9 @@ class DockerSandbox:
         nano_cpus = int(self.limits.cpu * 1_000_000_000)
         mem_limit = f"{self.limits.memory_mb}m"
 
-        logger.info("Starting Docker sandbox: %s (image=%s)", container_name, self.image)
+        logger.info(
+            "Starting Docker sandbox: %s (image=%s)", container_name, self.image
+        )
 
         self._container = await asyncio.to_thread(
             client.containers.run,
@@ -99,7 +103,9 @@ class DockerSandbox:
                 timeout=timeout,
             )
         except TimeoutError:
-            logger.warning("Docker command timed out after %ds: %s", timeout, command[:200])
+            logger.warning(
+                "Docker command timed out after %ds: %s", timeout, command[:200]
+            )
             return ExecutionResult(
                 exit_code=124,
                 stdout="",
@@ -140,7 +146,9 @@ class DockerSandbox:
         except OSError as exc:
             logger.warning("Error stopping Docker sandbox %s: %s", container_name, exc)
         except Exception as exc:  # noqa: BLE001
-            logger.error("Unexpected error stopping Docker sandbox %s: %s", container_name, exc)
+            logger.error(
+                "Unexpected error stopping Docker sandbox %s: %s", container_name, exc
+            )
         finally:
             self._container = None
             self._docker = None

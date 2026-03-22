@@ -38,9 +38,7 @@ def cmd_create(args: argparse.Namespace) -> None:
         "coding": "You are a coding assistant that helps write, review, and debug code.",
     }
     soul_body = soul_templates.get(template, soul_templates["default"])
-    soul_text = (
-        f"---\nname: {args.name}\nrole: {template}\ntone: professional\nverbosity: concise\n---\n\n{soul_body}\n"
-    )
+    soul_text = f"---\nname: {args.name}\nrole: {template}\ntone: professional\nverbosity: concise\n---\n\n{soul_body}\n"
     (workspace / "SOUL.md").write_text(soul_text)
 
     print(f"Created agent '{args.name}' at {workspace}")
@@ -50,7 +48,10 @@ def cmd_start(args: argparse.Namespace) -> None:
     """Start the agent runtime (sandbox)."""
     workspace = AGENTS_DIR / args.name
     if not workspace.exists():
-        print(f"Agent '{args.name}' not found. Run: cclaw create {args.name}", file=sys.stderr)
+        print(
+            f"Agent '{args.name}' not found. Run: cclaw create {args.name}",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     from .config import AgentConfig
@@ -195,7 +196,11 @@ def cmd_link(args: argparse.Namespace) -> None:
     lines = config_path.read_text().splitlines() if config_path.exists() else []
 
     # Remove existing cg_ lines
-    lines = [line for line in lines if not line.startswith("cg_url:") and not line.startswith("cg_api_key:")]
+    lines = [
+        line
+        for line in lines
+        if not line.startswith("cg_url:") and not line.startswith("cg_api_key:")
+    ]
     lines.append(f"cg_url: {args.cg_url}")
 
     # Prefer env var reference over plaintext API key
@@ -250,14 +255,20 @@ def _create_sandbox(config: AgentConfig) -> Any:
 def main() -> None:
     from .logging_config import setup_logging
 
-    parser = argparse.ArgumentParser(prog="cclaw", description="ContextClaw — Knowledge-aware agent orchestrator")
+    parser = argparse.ArgumentParser(
+        prog="cclaw", description="ContextClaw — Knowledge-aware agent orchestrator"
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     # create
     p = sub.add_parser("create", help="Create a new agent workspace")
     p.add_argument("name")
-    p.add_argument("--template", default="default", choices=["default", "research", "coding"])
-    p.add_argument("--provider", default="claude", choices=["claude", "openai", "ollama"])
+    p.add_argument(
+        "--template", default="default", choices=["default", "research", "coding"]
+    )
+    p.add_argument(
+        "--provider", default="claude", choices=["claude", "openai", "ollama"]
+    )
 
     # start
     p = sub.add_parser("start", help="Start the agent runtime")
@@ -278,8 +289,12 @@ def main() -> None:
     p.add_argument("--api-key", required=True)
 
     # Global flags
-    parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
-    parser.add_argument("--json-logs", action="store_true", help="Output structured JSON logs")
+    parser.add_argument(
+        "--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"]
+    )
+    parser.add_argument(
+        "--json-logs", action="store_true", help="Output structured JSON logs"
+    )
 
     args = parser.parse_args()
     setup_logging(level=args.log_level, structured=args.json_logs)

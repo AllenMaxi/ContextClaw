@@ -125,7 +125,9 @@ class AgentRunner:
                 logger.error("Provider call failed with non-transient error: %s", exc)
                 raise
 
-        raise ConnectionError(f"Provider unreachable after {self._max_retries} attempts") from last_exc
+        raise ConnectionError(
+            f"Provider unreachable after {self._max_retries} attempts"
+        ) from last_exc
 
     # ------------------------------------------------------------------
     # Tool validation
@@ -209,7 +211,10 @@ class AgentRunner:
             # Record assistant turn with tool calls
             self.session.add_assistant(
                 response.content,
-                tool_calls=[{"id": tc.id, "name": tc.name, "arguments": tc.arguments} for tc in response.tool_calls],
+                tool_calls=[
+                    {"id": tc.id, "name": tc.name, "arguments": tc.arguments}
+                    for tc in response.tool_calls
+                ],
             )
 
             for tc in response.tool_calls:
@@ -236,7 +241,9 @@ class AgentRunner:
                         result = f"Tool '{tc.name}' is blocked by policy."
                         logger.info("Blocked tool call: %s", tc.name)
                         self.session.add_tool_result(tc.id, result)
-                        yield Event(type="tool_result", data={"id": tc.id, "result": result})
+                        yield Event(
+                            type="tool_result", data={"id": tc.id, "result": result}
+                        )
                         continue
 
                 # Execute tool

@@ -27,3 +27,6 @@ packages = ["contextclaw"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+
+[tool.ruff]
+required-version = "==0.15.6"

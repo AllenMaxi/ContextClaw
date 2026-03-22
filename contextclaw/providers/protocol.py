@@ -19,4 +19,6 @@ class LLMResponse:
 
 
 class LLMProvider(Protocol):
-    def complete(self, messages: list[dict], tools: list[dict], system: str = "") -> LLMResponse: ...
+    def complete(
+        self, messages: list[dict], tools: list[dict], system: str = ""
+    ) -> LLMResponse: ...

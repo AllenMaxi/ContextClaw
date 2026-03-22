@@ -19,7 +19,9 @@ class OllamaProvider:
         self.model = model
         self.base_url = base_url.rstrip("/")
 
-    def complete(self, messages: list[dict], tools: list[dict], system: str = "") -> LLMResponse:
+    def complete(
+        self, messages: list[dict], tools: list[dict], system: str = ""
+    ) -> LLMResponse:
         all_messages: list[dict[str, Any]] = []
         if system:
             all_messages.append({"role": "system", "content": system})

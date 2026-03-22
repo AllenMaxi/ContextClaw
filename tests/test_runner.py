@@ -164,7 +164,9 @@ async def test_run_tool_call_event_data(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_policy_blocking_yields_tool_result_with_blocked_message(tmp_path: Path):
-    tc = ToolCall(id="tc_blocked", name="shell_execute", arguments={"command": "rm -rf /"})
+    tc = ToolCall(
+        id="tc_blocked", name="shell_execute", arguments={"command": "rm -rf /"}
+    )
     responses = [
         LLMResponse(content="", tool_calls=[tc]),
         LLMResponse(content="I cannot execute that"),
@@ -185,7 +187,9 @@ async def test_policy_blocking_yields_tool_result_with_blocked_message(tmp_path:
 
 @pytest.mark.asyncio
 async def test_policy_allow_does_not_block(tmp_path: Path):
-    tc = ToolCall(id="tc_ok", name="filesystem_read", arguments={"path": "/tmp/file.txt"})
+    tc = ToolCall(
+        id="tc_ok", name="filesystem_read", arguments={"path": "/tmp/file.txt"}
+    )
     responses = [
         LLMResponse(content="", tool_calls=[tc]),
         LLMResponse(content="File content retrieved"),

@@ -208,7 +208,9 @@ class ProcessSandbox:
 
         blocked_hit = self._command_accesses_blocked(command)
         if blocked_hit:
-            logger.warning("Blocked command accessing '%s': %s", blocked_hit, command[:200])
+            logger.warning(
+                "Blocked command accessing '%s': %s", blocked_hit, command[:200]
+            )
             return ExecutionResult(
                 exit_code=1,
                 stdout="",
@@ -223,12 +225,16 @@ class ProcessSandbox:
                 stderr=asyncio.subprocess.PIPE,
             )
             try:
-                stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+                stdout_b, stderr_b = await asyncio.wait_for(
+                    proc.communicate(), timeout=timeout
+                )
                 timed_out = False
             except TimeoutError:
                 proc.kill()
                 await proc.communicate()
-                logger.warning("Command timed out after %ds: %s", timeout, command[:200])
+                logger.warning(
+                    "Command timed out after %ds: %s", timeout, command[:200]
+                )
                 return ExecutionResult(
                     exit_code=124,
                     stdout="",

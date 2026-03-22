@@ -46,7 +46,9 @@ class ChatHandler(BaseHTTPRequestHandler):
         origin = self.cors_origin or "*"
         self.send_header("Access-Control-Allow-Origin", origin)
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept")
+        self.send_header(
+            "Access-Control-Allow-Headers", "Content-Type, Authorization, Accept"
+        )
 
     def do_OPTIONS(self) -> None:
         self.send_response(204)

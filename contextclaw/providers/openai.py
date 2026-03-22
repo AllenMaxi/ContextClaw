@@ -7,7 +7,9 @@ from typing import Any
 try:
     import openai as openai_sdk
 except ImportError as e:
-    raise ImportError("openai SDK is required for OpenAIProvider. Install it with: pip install openai") from e
+    raise ImportError(
+        "openai SDK is required for OpenAIProvider. Install it with: pip install openai"
+    ) from e
 
 from .protocol import LLMResponse, ToolCall
 
@@ -27,7 +29,9 @@ class OpenAIProvider:
             base_url=base_url,
         )
 
-    def complete(self, messages: list[dict], tools: list[dict], system: str = "") -> LLMResponse:
+    def complete(
+        self, messages: list[dict], tools: list[dict], system: str = ""
+    ) -> LLMResponse:
         all_messages: list[dict[str, Any]] = []
         if system:
             all_messages.append({"role": "system", "content": system})

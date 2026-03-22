@@ -114,7 +114,9 @@ async def test_tool_execution_through_sandbox(tmp_path: Path):
     config = _make_config(tmp_path)
     sandbox = ProcessSandbox(workspace=tmp_path)
 
-    tc = ToolCall(id="tc1", name="shell_execute", arguments={"command": f"cat {test_file}"})
+    tc = ToolCall(
+        id="tc1", name="shell_execute", arguments={"command": f"cat {test_file}"}
+    )
     provider = ScriptedProvider(
         [
             LLMResponse(content="Let me read that file.", tool_calls=[tc]),
@@ -151,7 +153,9 @@ async def test_sandbox_blocks_dangerous_command_in_pipeline(tmp_path: Path):
     config = _make_config(tmp_path)
     sandbox = ProcessSandbox(workspace=tmp_path)
 
-    tc = ToolCall(id="tc1", name="shell_execute", arguments={"command": "cat ~/.ssh/id_rsa"})
+    tc = ToolCall(
+        id="tc1", name="shell_execute", arguments={"command": "cat ~/.ssh/id_rsa"}
+    )
     provider = ScriptedProvider(
         [
             LLMResponse(content="", tool_calls=[tc]),
@@ -243,14 +247,19 @@ async def test_knowledge_recall_and_store_full_cycle(tmp_path: Path):
     # Recall happened
     recall_events = [e for e in events if e.type == "knowledge_recalled"]
     assert len(recall_events) == 1
-    assert recall_events[0].data["memories"][0]["content"] == "User prefers concise answers"
+    assert (
+        recall_events[0].data["memories"][0]["content"]
+        == "User prefers concise answers"
+    )
 
     # Store happened
     knowledge.store.assert_called_once()
 
     # Session messages include recalled context
     messages = runner.session.get_messages()
-    recalled_msg = [m for m in messages if "[Recalled knowledge]" in m.get("content", "")]
+    recalled_msg = [
+        m for m in messages if "[Recalled knowledge]" in m.get("content", "")
+    ]
     assert len(recalled_msg) == 1
 
 
@@ -268,7 +277,9 @@ async def test_multi_turn_with_tools_and_knowledge(tmp_path: Path):
     config = _make_config(tmp_path)
     sandbox = ProcessSandbox(workspace=tmp_path)
 
-    tc = ToolCall(id="tc1", name="shell_execute", arguments={"command": f"cat {test_file}"})
+    tc = ToolCall(
+        id="tc1", name="shell_execute", arguments={"command": f"cat {test_file}"}
+    )
     provider = ScriptedProvider(
         [
             # Turn 1: LLM reads file
@@ -319,7 +330,9 @@ async def test_multi_turn_with_tools_and_knowledge(tmp_path: Path):
 async def test_soul_md_used_as_system_prompt(tmp_path: Path):
     """SOUL.md content is passed as system prompt to every provider call."""
     soul_file = tmp_path / "SOUL.md"
-    soul_file.write_text("---\nname: TestBot\nrole: assistant\n---\n\nYou are a helpful test bot.\n")
+    soul_file.write_text(
+        "---\nname: TestBot\nrole: assistant\n---\n\nYou are a helpful test bot.\n"
+    )
 
     config = _make_config(tmp_path, soul_path=soul_file)
     provider = ScriptedProvider(
@@ -394,7 +407,9 @@ def test_agent_config_from_directory(tmp_path: Path):
     """AgentConfig.from_dir wires up workspace, soul, and tools."""
     config_yaml = "name: my-agent\nprovider: claude\nsandbox_type: process\ntools: filesystem,shell\n"
     (tmp_path / "config.yaml").write_text(config_yaml)
-    (tmp_path / "SOUL.md").write_text("---\nname: my-agent\nrole: default\n---\n\nBe helpful.\n")
+    (tmp_path / "SOUL.md").write_text(
+        "---\nname: my-agent\nrole: default\n---\n\nBe helpful.\n"
+    )
 
     config = AgentConfig.from_dir(tmp_path)
 

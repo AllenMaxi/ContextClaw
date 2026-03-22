@@ -25,7 +25,9 @@ class ContextGraphBridge:
     def __post_init__(self) -> None:
         from contextgraph_sdk import ContextGraph, HttpTransport
 
-        self._client = ContextGraph(HttpTransport(base_url=self.cg_url, api_key=self.api_key))
+        self._client = ContextGraph(
+            HttpTransport(base_url=self.cg_url, api_key=self.api_key)
+        )
 
     def recall(self, query: str) -> list[dict]:
         """Recall relevant knowledge before each LLM turn."""
@@ -78,19 +80,27 @@ class ContextGraphBridge:
             logger.error("Unexpected error getting ContextGraph trust: %s", exc)
             return {}
 
-    def register(self, name: str, org_id: str, capabilities: list[str] | None = None) -> str:
+    def register(
+        self, name: str, org_id: str, capabilities: list[str] | None = None
+    ) -> str:
         """Register this agent with ContextGraph. Returns agent_id."""
         try:
-            result = self._client.register_agent(name, org_id, capabilities=capabilities)
+            result = self._client.register_agent(
+                name, org_id, capabilities=capabilities
+            )
         except (ConnectionError, TimeoutError, OSError) as exc:
-            logger.error("Failed to register agent with ContextGraph (transient): %s", exc)
+            logger.error(
+                "Failed to register agent with ContextGraph (transient): %s", exc
+            )
             raise
         except Exception as exc:  # noqa: BLE001
             logger.error("Unexpected error registering agent: %s", exc)
             raise
 
         if not isinstance(result, dict) or "agent_id" not in result:
-            raise ValueError(f"ContextGraph registration returned unexpected result: {result!r}")
+            raise ValueError(
+                f"ContextGraph registration returned unexpected result: {result!r}"
+            )
 
         self.agent_id = result["agent_id"]
         return self.agent_id
@@ -100,7 +110,9 @@ class ContextGraphBridge:
         if not self.agent_id:
             return []
         try:
-            result = self._client.discover(self.agent_id, q=query, min_reputation=min_reputation)
+            result = self._client.discover(
+                self.agent_id, q=query, min_reputation=min_reputation
+            )
             return result.get("agents", [])
         except (ConnectionError, TimeoutError, OSError) as exc:
             logger.warning("Failed to discover agents (transient): %s", exc)
@@ -156,7 +168,9 @@ class ContextGraphBridge:
         stored: list[dict] = []
         for fact in facts:
             fact_meta = fact.get("metadata")
-            fact_type = fact_meta.get("type", "fact") if isinstance(fact_meta, dict) else "fact"
+            fact_type = (
+                fact_meta.get("type", "fact") if isinstance(fact_meta, dict) else "fact"
+            )
             result = self.store(
                 content=fact["content"],
                 metadata={

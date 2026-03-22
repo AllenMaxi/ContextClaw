@@ -78,10 +78,14 @@ class AgentConfig:
         base_dir = path.parent.resolve()
 
         workspace_raw = raw.get("workspace", "")
-        workspace = _resolve_config_path(workspace_raw, base_dir) if workspace_raw else base_dir
+        workspace = (
+            _resolve_config_path(workspace_raw, base_dir) if workspace_raw else base_dir
+        )
 
         tools_raw = raw.get("tools", "")
-        tools = [t.strip() for t in tools_raw.split(",") if t.strip()] if tools_raw else []
+        tools = (
+            [t.strip() for t in tools_raw.split(",") if t.strip()] if tools_raw else []
+        )
 
         soul_raw = raw.get("soul_path", "")
         soul_path = _resolve_config_path(soul_raw, base_dir) if soul_raw else None

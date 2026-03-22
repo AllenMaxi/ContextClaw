@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from contextclaw.config.agent_config import AgentConfig, _resolve_config_path, _resolve_env
+from contextclaw.config.agent_config import (
+    AgentConfig,
+    _resolve_config_path,
+    _resolve_env,
+)
 from contextclaw.config.soul import SoulConfig, load_soul
 
 # ---------------------------------------------------------------------------
@@ -103,7 +107,9 @@ def test_from_yaml_policy_path(tmp_path: Path):
     policy_file = tmp_path / "policy.yaml"
     policy_file.write_text("permissions:\n  tools:\n", encoding="utf-8")
     config_file = tmp_path / "config.yaml"
-    config_file.write_text(f"name: agent\npolicy_path: {policy_file}\n", encoding="utf-8")
+    config_file.write_text(
+        f"name: agent\npolicy_path: {policy_file}\n", encoding="utf-8"
+    )
     config = AgentConfig.from_yaml(config_file)
     assert config.policy_path == policy_file
 
@@ -177,7 +183,9 @@ def test_from_dir_explicit_soul_path_not_overridden(tmp_path: Path):
     soul_auto = tmp_path / "SOUL.md"
     soul_auto.write_text("Auto soul.", encoding="utf-8")
     config_file = tmp_path / "config.yaml"
-    config_file.write_text(f"name: agent\nsoul_path: {explicit_soul}\n", encoding="utf-8")
+    config_file.write_text(
+        f"name: agent\nsoul_path: {explicit_soul}\n", encoding="utf-8"
+    )
     config = AgentConfig.from_dir(tmp_path)
     assert config.soul_path == explicit_soul
 

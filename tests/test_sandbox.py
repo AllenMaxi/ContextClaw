@@ -6,7 +6,11 @@ from pathlib import Path
 
 import pytest
 from contextclaw.sandbox.policy import PolicyEngine
-from contextclaw.sandbox.process import ProcessSandbox, _extract_path_tokens, _path_is_under
+from contextclaw.sandbox.process import (
+    ProcessSandbox,
+    _extract_path_tokens,
+    _path_is_under,
+)
 
 # ---------------------------------------------------------------------------
 # ProcessSandbox — basic execution

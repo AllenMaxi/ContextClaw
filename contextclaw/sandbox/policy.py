@@ -160,16 +160,24 @@ class PolicyEngine:
         self._fs_cfg: dict = self._permissions.get("filesystem", {})
 
         # Tool lists
-        self._auto_approve: set[str] = set(_as_list(self._tools_cfg.get("auto_approve", [])))
-        self._require_confirm: set[str] = set(_as_list(self._tools_cfg.get("require_confirm", [])))
-        self._blocked_tools: set[str] = set(_as_list(self._tools_cfg.get("blocked", [])))
+        self._auto_approve: set[str] = set(
+            _as_list(self._tools_cfg.get("auto_approve", []))
+        )
+        self._require_confirm: set[str] = set(
+            _as_list(self._tools_cfg.get("require_confirm", []))
+        )
+        self._blocked_tools: set[str] = set(
+            _as_list(self._tools_cfg.get("blocked", []))
+        )
 
         # Filesystem lists — resolve to absolute paths for containment checks
         self._allowed_paths: list[Path] = [
-            Path(p).expanduser().resolve() for p in _as_list(self._fs_cfg.get("allowed", []))
+            Path(p).expanduser().resolve()
+            for p in _as_list(self._fs_cfg.get("allowed", []))
         ]
         self._blocked_paths: list[Path] = [
-            Path(p).expanduser().resolve() for p in _as_list(self._fs_cfg.get("blocked", []))
+            Path(p).expanduser().resolve()
+            for p in _as_list(self._fs_cfg.get("blocked", []))
         ]
 
     # ------------------------------------------------------------------

@@ -28,7 +28,9 @@ class ToolManager:
         """Register a tool definition."""
         self._tools[tool.name] = tool
 
-    def register_bundle(self, bundle_name: str, bundles_path: Path | None = None) -> None:
+    def register_bundle(
+        self, bundle_name: str, bundles_path: Path | None = None
+    ) -> None:
         """Load and register all tools from a named bundle.
 
         Args:

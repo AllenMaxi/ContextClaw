@@ -25,7 +25,9 @@ def _make_fake_sdk():
         def recall(self, agent_id, query, limit=5):
             return []
 
-        def store(self, agent_id, content, metadata=None, evidence=None, citations=None):
+        def store(
+            self, agent_id, content, metadata=None, evidence=None, citations=None
+        ):
             return {"id": "mem-1", "content": content}
 
         def agent_trust(self, agent_id, requester_id):
@@ -130,7 +132,11 @@ def test_store_calls_client_when_configured(patch_sdk):
     bridge._client = client_mock
     result = bridge.store("important output", metadata={"key": "val"})
     client_mock.store.assert_called_once_with(
-        "agent-1", "important output", metadata={"key": "val"}, evidence=None, citations=None
+        "agent-1",
+        "important output",
+        metadata={"key": "val"},
+        evidence=None,
+        citations=None,
     )
     assert result == {"id": "mem-42"}
 
@@ -233,7 +239,9 @@ def test_summarize_and_store_extracts_facts(patch_sdk):
     client_mock.store.return_value = {"id": "mem-new"}
     bridge._client = client_mock
 
-    llm_response = '[{"content": "User prefers Python", "metadata": {"type": "preference"}}]'
+    llm_response = (
+        '[{"content": "User prefers Python", "metadata": {"type": "preference"}}]'
+    )
     provider = FakeSummaryProvider(llm_response)
 
     stored = bridge.summarize_and_store(

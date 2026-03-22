@@ -34,7 +34,9 @@ class ChatSession:
             self._trim()
         return msg
 
-    def add_assistant(self, content: str, tool_calls: list[dict] | None = None) -> Message:
+    def add_assistant(
+        self, content: str, tool_calls: list[dict] | None = None
+    ) -> Message:
         msg = Message(role="assistant", content=content, tool_calls=tool_calls or [])
         with self._lock:
             self._messages.append(msg)

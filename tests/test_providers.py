@@ -44,7 +44,9 @@ def test_llm_response_basic():
 
 def test_llm_response_with_tool_calls():
     tc = ToolCall(id="t1", name="web_search", arguments={"query": "test"})
-    resp = LLMResponse(content="", tool_calls=[tc], usage={"input_tokens": 10, "output_tokens": 5})
+    resp = LLMResponse(
+        content="", tool_calls=[tc], usage={"input_tokens": 10, "output_tokens": 5}
+    )
     assert len(resp.tool_calls) == 1
     assert resp.tool_calls[0].name == "web_search"
     assert resp.usage["input_tokens"] == 10
@@ -111,7 +113,9 @@ def test_provider_protocol_complete_signature():
     """A class with the right complete() signature satisfies LLMProvider Protocol."""
 
     class FakeProvider:
-        def complete(self, messages: list, tools: list, system: str = "") -> LLMResponse:
+        def complete(
+            self, messages: list, tools: list, system: str = ""
+        ) -> LLMResponse:
             return LLMResponse(content="ok")
 
     provider = FakeProvider()

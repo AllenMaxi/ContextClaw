@@ -68,7 +68,9 @@ def test_list_tools_empty():
 def test_list_tools_returns_correct_format():
     manager = ToolManager()
     params = {"type": "object", "properties": {"q": {"type": "string"}}}
-    manager.register(ToolDefinition(name="search", description="Search", parameters=params))
+    manager.register(
+        ToolDefinition(name="search", description="Search", parameters=params)
+    )
     tools = manager.list_tools()
     assert len(tools) == 1
     assert tools[0]["name"] == "search"
@@ -117,7 +119,11 @@ def test_register_bundle_shell():
 
 def test_register_bundle_custom(tmp_path: Path):
     """register_bundle accepts a custom bundles_path override."""
-    bundle_data = {"custom": [{"name": "custom_tool", "description": "A custom tool", "parameters": {}}]}
+    bundle_data = {
+        "custom": [
+            {"name": "custom_tool", "description": "A custom tool", "parameters": {}}
+        ]
+    }
     bundles_file = tmp_path / "bundles.json"
     bundles_file.write_text(json.dumps(bundle_data), encoding="utf-8")
 
