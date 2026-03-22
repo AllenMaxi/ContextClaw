@@ -53,15 +53,15 @@ def _resolve_env(value: str, env_fallback: str = "") -> str:
 class AgentConfig:
     name: str
     workspace: Path
-    provider: str = "claude"                        # claude | openai | ollama
-    model: str = ""                                 # empty = provider default
-    soul_path: Path | None = None                   # path to SOUL.md
-    policy_path: Path | None = None                 # path to policy YAML
-    sandbox_type: str = "process"                   # docker | process | none
+    provider: str = "claude"  # claude | openai | ollama
+    model: str = ""  # empty = provider default
+    soul_path: Path | None = None  # path to SOUL.md
+    policy_path: Path | None = None  # path to policy YAML
+    sandbox_type: str = "process"  # docker | process | none
     tools: list[str] = field(default_factory=list)  # tool bundle names
-    cg_url: str = ""                                # ContextGraph server URL
-    cg_api_key: str = ""                            # ContextGraph API key
-    agent_id: str = ""                              # ContextGraph agent ID
+    cg_url: str = ""  # ContextGraph server URL
+    cg_api_key: str = ""  # ContextGraph API key
+    agent_id: str = ""  # ContextGraph agent ID
 
     @classmethod
     def from_yaml(cls, path: Path) -> AgentConfig:

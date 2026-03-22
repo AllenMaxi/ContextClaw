@@ -6,10 +6,7 @@ from typing import Any
 try:
     import anthropic
 except ImportError as e:
-    raise ImportError(
-        "anthropic SDK is required for ClaudeProvider. "
-        "Install it with: pip install anthropic"
-    ) from e
+    raise ImportError("anthropic SDK is required for ClaudeProvider. Install it with: pip install anthropic") from e
 
 from .protocol import LLMProvider, LLMResponse, ToolCall
 
@@ -23,13 +20,9 @@ class ClaudeProvider:
         api_key: str | None = None,
     ) -> None:
         self.model = model
-        self._client = anthropic.Anthropic(
-            api_key=api_key or os.environ.get("ANTHROPIC_API_KEY")
-        )
+        self._client = anthropic.Anthropic(api_key=api_key or os.environ.get("ANTHROPIC_API_KEY"))
 
-    def complete(
-        self, messages: list[dict], tools: list[dict], system: str = ""
-    ) -> LLMResponse:
+    def complete(self, messages: list[dict], tools: list[dict], system: str = "") -> LLMResponse:
         kwargs: dict[str, Any] = dict(
             model=self.model,
             max_tokens=4096,

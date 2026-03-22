@@ -100,9 +100,7 @@ class ContextGraphBridge:
         if not self.agent_id:
             return []
         try:
-            result = self._client.discover(
-                self.agent_id, q=query, min_reputation=min_reputation
-            )
+            result = self._client.discover(self.agent_id, q=query, min_reputation=min_reputation)
             return result.get("agents", [])
         except (ConnectionError, TimeoutError, OSError) as exc:
             logger.warning("Failed to discover agents (transient): %s", exc)

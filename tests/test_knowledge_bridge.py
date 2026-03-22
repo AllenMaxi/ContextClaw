@@ -1,9 +1,10 @@
 """Tests for ContextGraphBridge with a mocked contextgraph_sdk."""
+
 from __future__ import annotations
 
 import sys
 import types
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -64,6 +65,7 @@ def patch_sdk():
 
 def _make_bridge(**kwargs):
     from contextclaw.knowledge.bridge import ContextGraphBridge
+
     defaults = dict(cg_url="http://localhost:8765")
     defaults.update(kwargs)
     return ContextGraphBridge(**defaults)
@@ -221,6 +223,7 @@ class FakeSummaryProvider:
 
     def complete(self, messages, tools, system=""):
         from contextclaw.providers.protocol import LLMResponse
+
         return LLMResponse(content=self._content)
 
 

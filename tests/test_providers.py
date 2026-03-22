@@ -1,15 +1,11 @@
 """Tests for provider protocol definitions and provider instantiation."""
+
 from __future__ import annotations
 
 import sys
-import types
-import unittest.mock
-from unittest.mock import patch
 
 import pytest
-
 from contextclaw.providers.protocol import LLMResponse, ToolCall
-
 
 # ---------------------------------------------------------------------------
 # ToolCall dataclass
@@ -113,12 +109,9 @@ def test_openai_provider_raises_import_error_when_sdk_missing():
 
 def test_provider_protocol_complete_signature():
     """A class with the right complete() signature satisfies LLMProvider Protocol."""
-    from contextclaw.providers.protocol import LLMProvider
 
     class FakeProvider:
-        def complete(
-            self, messages: list, tools: list, system: str = ""
-        ) -> LLMResponse:
+        def complete(self, messages: list, tools: list, system: str = "") -> LLMResponse:
             return LLMResponse(content="ok")
 
     provider = FakeProvider()

@@ -81,7 +81,7 @@ class ToolManager:
         process.terminate()
         try:
             await asyncio.wait_for(process.wait(), timeout=5.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             process.kill()
             await process.wait()
 

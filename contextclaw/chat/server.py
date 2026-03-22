@@ -5,7 +5,7 @@ import hmac
 import json
 import logging
 import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
 from typing import Any
 
@@ -178,6 +178,7 @@ class ChatHandler(BaseHTTPRequestHandler):
         turn runs at a time, preventing interleaved session state.
         Uses a shared event loop to avoid asyncio.run() conflicts in threads.
         """
+
         async def _collect() -> list:
             events = []
             async for event in self.runner.run(message):

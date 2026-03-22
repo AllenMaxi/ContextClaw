@@ -1,15 +1,12 @@
 """Tests for ProcessSandbox and PolicyEngine."""
+
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
-
-from contextclaw.sandbox.process import ProcessSandbox, _extract_path_tokens, _path_is_under
 from contextclaw.sandbox.policy import PolicyEngine
-from contextclaw.sandbox.protocol import ExecutionResult
-
+from contextclaw.sandbox.process import ProcessSandbox, _extract_path_tokens, _path_is_under
 
 # ---------------------------------------------------------------------------
 # ProcessSandbox — basic execution
@@ -289,12 +286,7 @@ def test_policy_check_path_no_substring_false_positive(tmp_path: Path):
     blocked_dir.mkdir()
     backup_dir = tmp_path / "secrets-backup"
     backup_dir.mkdir()
-    yaml = (
-        "permissions:\n"
-        "  filesystem:\n"
-        "    blocked:\n"
-        f"      - {blocked_dir}\n"
-    )
+    yaml = f"permissions:\n  filesystem:\n    blocked:\n      - {blocked_dir}\n"
     engine = PolicyEngine.from_text(yaml)
     # Blocked path — should be rejected
     assert engine.check_path(str(blocked_dir / "key.pem")) is False
@@ -373,12 +365,7 @@ def test_policy_engine_check_path_no_allowed_list_permissive(tmp_path: Path):
     blocked_dir = tmp_path / "blocked"
     blocked_dir.mkdir()
     blocked_str = str(blocked_dir)
-    yaml = (
-        "permissions:\n"
-        "  filesystem:\n"
-        "    blocked:\n"
-        f"      - {blocked_str}\n"
-    )
+    yaml = f"permissions:\n  filesystem:\n    blocked:\n      - {blocked_str}\n"
     engine = PolicyEngine.from_text(yaml)
     # A path outside the blocked dir should pass (no allow-list = permissive)
     safe = tmp_path / "safe.txt"

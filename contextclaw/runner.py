@@ -4,8 +4,9 @@ import asyncio
 import json
 import logging
 import time
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator
+from typing import Any
 
 from .chat.session import ChatSession
 from .config.agent_config import AgentConfig
@@ -104,25 +105,27 @@ class AgentRunner:
             except (ConnectionError, TimeoutError, OSError) as exc:
                 last_exc = exc
                 if attempt < self._max_retries - 1:
-                    delay = self._retry_base_delay * (2 ** attempt)
+                    delay = self._retry_base_delay * (2**attempt)
                     logger.warning(
                         "Provider call failed (attempt %d/%d), retrying in %.1fs: %s",
-                        attempt + 1, self._max_retries, delay, exc,
+                        attempt + 1,
+                        self._max_retries,
+                        delay,
+                        exc,
                     )
                     await asyncio.sleep(delay)
                 else:
                     logger.error(
                         "Provider call failed after %d attempts: %s",
-                        self._max_retries, exc,
+                        self._max_retries,
+                        exc,
                     )
             except (ValueError, TypeError) as exc:
                 # Non-transient — don't retry
                 logger.error("Provider call failed with non-transient error: %s", exc)
                 raise
 
-        raise ConnectionError(
-            f"Provider unreachable after {self._max_retries} attempts"
-        ) from last_exc
+        raise ConnectionError(f"Provider unreachable after {self._max_retries} attempts") from last_exc
 
     # ------------------------------------------------------------------
     # Tool validation
@@ -206,10 +209,7 @@ class AgentRunner:
             # Record assistant turn with tool calls
             self.session.add_assistant(
                 response.content,
-                tool_calls=[
-                    {"id": tc.id, "name": tc.name, "arguments": tc.arguments}
-                    for tc in response.tool_calls
-                ],
+                tool_calls=[{"id": tc.id, "name": tc.name, "arguments": tc.arguments} for tc in response.tool_calls],
             )
 
             for tc in response.tool_calls:
@@ -236,9 +236,7 @@ class AgentRunner:
                         result = f"Tool '{tc.name}' is blocked by policy."
                         logger.info("Blocked tool call: %s", tc.name)
                         self.session.add_tool_result(tc.id, result)
-                        yield Event(
-                            type="tool_result", data={"id": tc.id, "result": result}
-                        )
+                        yield Event(type="tool_result", data={"id": tc.id, "result": result})
                         continue
 
                 # Execute tool

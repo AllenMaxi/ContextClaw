@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -80,8 +79,6 @@ def cmd_chat(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     from .config import AgentConfig
-    from .config.soul import load_soul
-    from .chat import ChatSession
 
     # Build the runner
     config = AgentConfig.from_dir(workspace)
@@ -253,9 +250,7 @@ def _create_sandbox(config: AgentConfig) -> Any:
 def main() -> None:
     from .logging_config import setup_logging
 
-    parser = argparse.ArgumentParser(
-        prog="cclaw", description="ContextClaw — Knowledge-aware agent orchestrator"
-    )
+    parser = argparse.ArgumentParser(prog="cclaw", description="ContextClaw — Knowledge-aware agent orchestrator")
     sub = parser.add_subparsers(dest="command", required=True)
 
     # create

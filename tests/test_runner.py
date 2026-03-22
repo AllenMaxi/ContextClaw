@@ -1,16 +1,15 @@
 """Tests for AgentRunner with a fake provider."""
+
 from __future__ import annotations
 
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-
 from contextclaw.config.agent_config import AgentConfig
 from contextclaw.providers.protocol import LLMResponse, ToolCall
 from contextclaw.runner import AgentRunner, Event
 from contextclaw.tools.manager import ToolDefinition, ToolManager
-
 
 # ---------------------------------------------------------------------------
 # FakeProvider
@@ -334,10 +333,12 @@ def test_event_default_data():
 async def test_smart_recall_uses_context_from_prior_turns(tmp_path: Path):
     """After the first turn, recall query should include last assistant content."""
     config = _make_config(tmp_path)
-    provider = FakeProvider([
-        LLMResponse(content="First answer"),
-        LLMResponse(content="Second answer"),
-    ])
+    provider = FakeProvider(
+        [
+            LLMResponse(content="First answer"),
+            LLMResponse(content="Second answer"),
+        ]
+    )
 
     knowledge = MagicMock()
     knowledge.auto_recall = True
@@ -363,11 +364,13 @@ async def test_smart_recall_uses_context_from_prior_turns(tmp_path: Path):
 async def test_recall_happens_every_turn(tmp_path: Path):
     """Recall should be called on each run(), not just the first."""
     config = _make_config(tmp_path)
-    provider = FakeProvider([
-        LLMResponse(content="A1"),
-        LLMResponse(content="A2"),
-        LLMResponse(content="A3"),
-    ])
+    provider = FakeProvider(
+        [
+            LLMResponse(content="A1"),
+            LLMResponse(content="A2"),
+            LLMResponse(content="A3"),
+        ]
+    )
 
     knowledge = MagicMock()
     knowledge.auto_recall = True
@@ -392,10 +395,12 @@ async def test_recall_happens_every_turn(tmp_path: Path):
 @pytest.mark.asyncio
 async def test_close_session_calls_summarize_and_store(tmp_path: Path):
     config = _make_config(tmp_path)
-    provider = FakeProvider([
-        LLMResponse(content="A1"),
-        LLMResponse(content="A2"),
-    ])
+    provider = FakeProvider(
+        [
+            LLMResponse(content="A1"),
+            LLMResponse(content="A2"),
+        ]
+    )
 
     knowledge = MagicMock()
     knowledge.auto_recall = True
@@ -465,7 +470,8 @@ async def test_retry_recovers_from_transient_failure(tmp_path: Path):
         success_response=LLMResponse(content="Recovered!"),
     )
     runner = AgentRunner(
-        config=config, provider=provider,
+        config=config,
+        provider=provider,
         retry_base_delay=0.01,  # fast for tests
     )
 
@@ -484,8 +490,10 @@ async def test_retry_exhausted_yields_error(tmp_path: Path):
     config = _make_config(tmp_path)
     provider = FailingProvider(ConnectionError("down"))
     runner = AgentRunner(
-        config=config, provider=provider,
-        max_retries=2, retry_base_delay=0.01,
+        config=config,
+        provider=provider,
+        max_retries=2,
+        retry_base_delay=0.01,
     )
 
     events = await _collect(runner, "Hello")
@@ -501,8 +509,10 @@ async def test_non_transient_error_no_retry(tmp_path: Path):
     config = _make_config(tmp_path)
     provider = FailingProvider(ValueError("bad input"))
     runner = AgentRunner(
-        config=config, provider=provider,
-        max_retries=3, retry_base_delay=0.01,
+        config=config,
+        provider=provider,
+        max_retries=3,
+        retry_base_delay=0.01,
     )
 
     events = await _collect(runner, "Hello")
@@ -561,10 +571,12 @@ async def test_shell_execute_always_valid(tmp_path: Path):
 @pytest.mark.asyncio
 async def test_total_usage_tracks_tokens(tmp_path: Path):
     config = _make_config(tmp_path)
-    provider = FakeProvider([
-        LLMResponse(content="A1", usage={"input_tokens": 10, "output_tokens": 20}),
-        LLMResponse(content="A2", usage={"input_tokens": 15, "output_tokens": 25}),
-    ])
+    provider = FakeProvider(
+        [
+            LLMResponse(content="A1", usage={"input_tokens": 10, "output_tokens": 20}),
+            LLMResponse(content="A2", usage={"input_tokens": 15, "output_tokens": 25}),
+        ]
+    )
     runner = AgentRunner(config=config, provider=provider)
 
     await _collect(runner, "Q1")
@@ -606,10 +618,12 @@ async def test_knowledge_store_failure_does_not_crash(tmp_path: Path):
 @pytest.mark.asyncio
 async def test_close_session_handles_summarization_failure(tmp_path: Path):
     config = _make_config(tmp_path)
-    provider = FakeProvider([
-        LLMResponse(content="A1"),
-        LLMResponse(content="A2"),
-    ])
+    provider = FakeProvider(
+        [
+            LLMResponse(content="A1"),
+            LLMResponse(content="A2"),
+        ]
+    )
 
     knowledge = MagicMock()
     knowledge.auto_recall = True

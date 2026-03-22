@@ -1,75 +1,12 @@
 """Tests for the HTTP chat server."""
+
 from __future__ import annotations
 
 import json
-import threading
-import time
-from io import BytesIO
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
-
-from contextclaw.chat.server import ChatHandler, ChatServer, _MAX_BODY_BYTES
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-class FakeRequest:
-    """Minimal request object for testing ChatHandler."""
-
-    def __init__(self, method: str, path: str, body: bytes = b"", headers: dict | None = None):
-        self.method = method
-        self.path = path
-        self.body = body
-        self.headers = headers or {}
-
-
-def _make_handler_with_response(
-    method: str,
-    path: str,
-    body: bytes = b"",
-    headers: dict | None = None,
-    auth_token: str = "",
-    runner: object | None = None,
-    session: object | None = None,
-) -> tuple[ChatHandler, BytesIO]:
-    """Create a ChatHandler and capture its response output."""
-    all_headers = {"Content-Length": str(len(body))}
-    if headers:
-        all_headers.update(headers)
-
-    # Build raw HTTP request
-    header_lines = "\r\n".join(f"{k}: {v}" for k, v in all_headers.items())
-    raw_request = f"{method} {path} HTTP/1.1\r\n{header_lines}\r\n\r\n".encode() + body
-
-    # Prepare handler
-    rfile = BytesIO(raw_request)
-    wfile = BytesIO()
-
-    # Save/restore class state
-    old_runner = ChatHandler.runner
-    old_session = ChatHandler.session
-    old_token = ChatHandler.auth_token
-
-    ChatHandler.runner = runner
-    ChatHandler.session = session
-    ChatHandler.auth_token = auth_token
-
-    try:
-        # We can't easily instantiate ChatHandler directly (it calls handle()),
-        # so test the individual methods instead
-        pass
-    finally:
-        ChatHandler.runner = old_runner
-        ChatHandler.session = old_session
-        ChatHandler.auth_token = old_token
-
-    return wfile
-
+from contextclaw.chat.server import _MAX_BODY_BYTES, ChatHandler, ChatServer
 
 # ---------------------------------------------------------------------------
 # Body size limit

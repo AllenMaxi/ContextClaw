@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ResourceLimits:
-    cpu: float = 1.0          # CPU core count (fractional allowed)
-    memory_mb: int = 512      # Memory limit in MiB
+    cpu: float = 1.0  # CPU core count (fractional allowed)
+    memory_mb: int = 512  # Memory limit in MiB
     timeout_seconds: int = 300
 
 
@@ -43,9 +43,7 @@ class DockerSandbox:
         try:
             import docker  # type: ignore[import-untyped]
         except ImportError as exc:
-            raise ImportError(
-                "docker SDK is required for DockerSandbox: pip install docker"
-            ) from exc
+            raise ImportError("docker SDK is required for DockerSandbox: pip install docker") from exc
 
         client = await asyncio.to_thread(docker.from_env)
         self._docker = client
@@ -100,7 +98,7 @@ class DockerSandbox:
                 ),
                 timeout=timeout,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("Docker command timed out after %ds: %s", timeout, command[:200])
             return ExecutionResult(
                 exit_code=124,

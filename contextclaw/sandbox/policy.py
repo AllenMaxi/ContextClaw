@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 # Supports the policy schema only: nested keys via indentation, list items
 # as "- value" lines, and scalar key: value pairs.  No PyYAML dependency.
 
+
 def _parse_inline_list(value: str) -> list[str] | None:
     """Parse a ``[item1, item2]`` inline YAML list. Returns None if not a list."""
     value = value.strip()
@@ -83,7 +84,8 @@ def _parse_policy_yaml(text: str) -> dict:
             if indent != base_indent:
                 logger.warning(
                     "Policy YAML: unexpected indent at line %d, skipping: %s",
-                    i + 1, content,
+                    i + 1,
+                    content,
                 )
                 i += 1
                 continue
@@ -138,6 +140,7 @@ def _as_bool(value: object, default: bool = True) -> bool:
 # PolicyEngine
 # ---------------------------------------------------------------------------
 
+
 class PolicyEngine:
     """Evaluate agent actions against a YAML policy file.
 
@@ -163,12 +166,10 @@ class PolicyEngine:
 
         # Filesystem lists — resolve to absolute paths for containment checks
         self._allowed_paths: list[Path] = [
-            Path(p).expanduser().resolve()
-            for p in _as_list(self._fs_cfg.get("allowed", []))
+            Path(p).expanduser().resolve() for p in _as_list(self._fs_cfg.get("allowed", []))
         ]
         self._blocked_paths: list[Path] = [
-            Path(p).expanduser().resolve()
-            for p in _as_list(self._fs_cfg.get("blocked", []))
+            Path(p).expanduser().resolve() for p in _as_list(self._fs_cfg.get("blocked", []))
         ]
 
     # ------------------------------------------------------------------

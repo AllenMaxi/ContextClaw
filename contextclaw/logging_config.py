@@ -5,6 +5,7 @@ All modules use ``logging.getLogger(__name__)`` — this configures the
 root ``contextclaw`` logger with a structured JSON formatter for
 production and a human-readable formatter for development.
 """
+
 from __future__ import annotations
 
 import json
@@ -13,11 +14,8 @@ import sys
 import time
 from typing import Any
 
-
 # Standard LogRecord attribute names — computed once at import time.
-_STANDARD_RECORD_ATTRS: frozenset[str] = frozenset(
-    logging.LogRecord("", 0, "", 0, "", (), None).__dict__
-)
+_STANDARD_RECORD_ATTRS: frozenset[str] = frozenset(logging.LogRecord("", 0, "", 0, "", (), None).__dict__)
 
 
 class StructuredFormatter(logging.Formatter):
@@ -30,10 +28,7 @@ class StructuredFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         entry: dict[str, Any] = {
-            "timestamp": time.strftime(
-                "%Y-%m-%dT%H:%M:%S", time.gmtime(record.created)
-            )
-            + f".{int(record.msecs):03d}Z",
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(record.created)) + f".{int(record.msecs):03d}Z",
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),

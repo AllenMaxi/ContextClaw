@@ -5,7 +5,7 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-from .protocol import LLMProvider, LLMResponse, ToolCall
+from .protocol import LLMResponse, ToolCall
 
 
 class OllamaProvider:
@@ -19,9 +19,7 @@ class OllamaProvider:
         self.model = model
         self.base_url = base_url.rstrip("/")
 
-    def complete(
-        self, messages: list[dict], tools: list[dict], system: str = ""
-    ) -> LLMResponse:
+    def complete(self, messages: list[dict], tools: list[dict], system: str = "") -> LLMResponse:
         all_messages: list[dict[str, Any]] = []
         if system:
             all_messages.append({"role": "system", "content": system})
@@ -48,8 +46,7 @@ class OllamaProvider:
                 raw = json.loads(resp.read().decode())
         except urllib.error.URLError as e:
             raise ConnectionError(
-                f"Could not reach Ollama at {self.base_url}. "
-                "Make sure Ollama is running (ollama serve)."
+                f"Could not reach Ollama at {self.base_url}. Make sure Ollama is running (ollama serve)."
             ) from e
 
         message = raw.get("message", {})

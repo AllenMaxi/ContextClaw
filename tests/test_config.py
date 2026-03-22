@@ -1,14 +1,11 @@
 """Tests for AgentConfig and SOUL.md parsing."""
+
 from __future__ import annotations
 
-import os
 from pathlib import Path
-
-import pytest
 
 from contextclaw.config.agent_config import AgentConfig, _resolve_env
 from contextclaw.config.soul import SoulConfig, load_soul
-
 
 # ---------------------------------------------------------------------------
 # AgentConfig defaults
@@ -202,10 +199,7 @@ def test_load_soul_missing_closing_delimiter(tmp_path: Path):
     """A file with opening --- but no closing --- is treated as body-only."""
     soul_file = tmp_path / "SOUL.md"
     soul_file.write_text(
-        "---\n"
-        "name: Broken\n"
-        "role: tester\n"
-        "This never closes.\n",
+        "---\nname: Broken\nrole: tester\nThis never closes.\n",
         encoding="utf-8",
     )
     soul = load_soul(soul_file)
@@ -235,9 +229,7 @@ def test_load_soul_extra_frontmatter_fields(tmp_path: Path):
 def test_load_soul_empty_body(tmp_path: Path):
     soul_file = tmp_path / "SOUL.md"
     soul_file.write_text(
-        "---\n"
-        "name: Agent\n"
-        "---\n",
+        "---\nname: Agent\n---\n",
         encoding="utf-8",
     )
     soul = load_soul(soul_file)
@@ -297,9 +289,7 @@ def test_from_yaml_resolves_env_var_api_key(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("TEST_API_KEY_FOR_CG", "resolved_key")
     config_file = tmp_path / "config.yaml"
     config_file.write_text(
-        "name: env-agent\n"
-        "cg_url: http://cg.local\n"
-        "cg_api_key: ${TEST_API_KEY_FOR_CG}\n",
+        "name: env-agent\ncg_url: http://cg.local\ncg_api_key: ${TEST_API_KEY_FOR_CG}\n",
         encoding="utf-8",
     )
     config = AgentConfig.from_yaml(config_file)
@@ -310,8 +300,7 @@ def test_from_yaml_falls_back_to_contextgraph_api_key_env(tmp_path: Path, monkey
     monkeypatch.setenv("CONTEXTGRAPH_API_KEY", "env_fallback_key")
     config_file = tmp_path / "config.yaml"
     config_file.write_text(
-        "name: env-agent\n"
-        "cg_url: http://cg.local\n",
+        "name: env-agent\ncg_url: http://cg.local\n",
         encoding="utf-8",
     )
     config = AgentConfig.from_yaml(config_file)

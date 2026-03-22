@@ -113,4 +113,4 @@ class ChatSession:
     def _trim(self) -> None:
         """Trim history to max_history. Caller must hold self._lock."""
         if len(self._messages) > self.max_history:
-            self._messages = self._messages[-self.max_history:]
+            self._messages = self._messages[-self.max_history :]

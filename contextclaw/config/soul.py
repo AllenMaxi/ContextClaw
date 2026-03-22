@@ -11,7 +11,7 @@ class SoulConfig:
     tone: str = ""
     verbosity: str = ""
     extra: dict[str, str] = field(default_factory=dict)  # other frontmatter fields
-    body: str = ""                                        # markdown body (system prompt)
+    body: str = ""  # markdown body (system prompt)
 
 
 _KNOWN_FIELDS = {"name", "role", "tone", "verbosity"}

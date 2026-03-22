@@ -123,11 +123,11 @@ class ProcessSandbox:
 
     workspace: Path
     allowed_paths: list[str] = field(default_factory=list)
-    blocked_paths: list[str] = field(
-        default_factory=lambda: list(_DEFAULT_BLOCKED)
-    )
+    blocked_paths: list[str] = field(default_factory=lambda: list(_DEFAULT_BLOCKED))
     _resolved_blocked_cache: list[tuple[str, Path]] = field(
-        default=None, init=False, repr=False  # type: ignore[assignment]
+        default=None,
+        init=False,
+        repr=False,  # type: ignore[assignment]
     )
 
     # ------------------------------------------------------------------
@@ -174,14 +174,16 @@ class ProcessSandbox:
 
         # Pass 1: top-level path tokens
         hit = self._check_paths_against_blocked(
-            _extract_path_tokens(command), blocked_pairs,
+            _extract_path_tokens(command),
+            blocked_pairs,
         )
         if hit:
             return hit
 
         # Pass 2: paths inside subshells, backticks, pipes
         hit = self._check_paths_against_blocked(
-            _extract_paths_from_subshells(command), blocked_pairs,
+            _extract_paths_from_subshells(command),
+            blocked_pairs,
         )
         if hit:
             return hit
@@ -221,11 +223,9 @@ class ProcessSandbox:
                 stderr=asyncio.subprocess.PIPE,
             )
             try:
-                stdout_b, stderr_b = await asyncio.wait_for(
-                    proc.communicate(), timeout=timeout
-                )
+                stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout)
                 timed_out = False
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 proc.kill()
                 await proc.communicate()
                 logger.warning("Command timed out after %ds: %s", timeout, command[:200])

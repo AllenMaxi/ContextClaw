@@ -1,14 +1,13 @@
 """Tests for ToolManager and bundle loading."""
+
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
 import pytest
-
-from contextclaw.tools.manager import ToolDefinition, ToolManager
 from contextclaw.tools.bundles import load_bundle
-
+from contextclaw.tools.manager import ToolDefinition, ToolManager
 
 # ---------------------------------------------------------------------------
 # ToolDefinition
@@ -118,11 +117,7 @@ def test_register_bundle_shell():
 
 def test_register_bundle_custom(tmp_path: Path):
     """register_bundle accepts a custom bundles_path override."""
-    bundle_data = {
-        "custom": [
-            {"name": "custom_tool", "description": "A custom tool", "parameters": {}}
-        ]
-    }
+    bundle_data = {"custom": [{"name": "custom_tool", "description": "A custom tool", "parameters": {}}]}
     bundles_file = tmp_path / "bundles.json"
     bundles_file.write_text(json.dumps(bundle_data), encoding="utf-8")
 
@@ -152,11 +147,7 @@ def test_load_bundle_missing_file_raises_file_not_found(tmp_path: Path):
 
 
 def test_load_bundle_custom_path(tmp_path: Path):
-    bundle_data = {
-        "mytools": [
-            {"name": "do_thing", "description": "Does a thing"}
-        ]
-    }
+    bundle_data = {"mytools": [{"name": "do_thing", "description": "Does a thing"}]}
     bundles_file = tmp_path / "my_bundles.json"
     bundles_file.write_text(json.dumps(bundle_data), encoding="utf-8")
     tools = load_bundle("mytools", bundles_path=bundles_file)

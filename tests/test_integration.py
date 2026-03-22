@@ -4,21 +4,20 @@ These tests wire together real components (config, session, tools, sandbox,
 runner) using a fake LLM provider, exercising the full pipeline without
 hitting external APIs.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-
 from contextclaw.chat.session import ChatSession
 from contextclaw.config.agent_config import AgentConfig
 from contextclaw.providers.protocol import LLMResponse, ToolCall
 from contextclaw.runner import AgentRunner, Event
-from contextclaw.sandbox.process import ProcessSandbox
 from contextclaw.sandbox.policy import PolicyEngine
-from contextclaw.tools.manager import ToolManager, ToolDefinition
-
+from contextclaw.sandbox.process import ProcessSandbox
+from contextclaw.tools.manager import ToolManager
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -65,10 +64,12 @@ async def test_full_lifecycle_create_chat_close(tmp_path: Path):
     tools = ToolManager()
     tools.register_bundle("shell")
 
-    provider = ScriptedProvider([
-        LLMResponse(content="Hello! How can I help?"),
-        LLMResponse(content="The answer is 42."),
-    ])
+    provider = ScriptedProvider(
+        [
+            LLMResponse(content="Hello! How can I help?"),
+            LLMResponse(content="The answer is 42."),
+        ]
+    )
 
     runner = AgentRunner(
         config=config,
@@ -114,13 +115,17 @@ async def test_tool_execution_through_sandbox(tmp_path: Path):
     sandbox = ProcessSandbox(workspace=tmp_path)
 
     tc = ToolCall(id="tc1", name="shell_execute", arguments={"command": f"cat {test_file}"})
-    provider = ScriptedProvider([
-        LLMResponse(content="Let me read that file.", tool_calls=[tc]),
-        LLMResponse(content="The file contains: important data"),
-    ])
+    provider = ScriptedProvider(
+        [
+            LLMResponse(content="Let me read that file.", tool_calls=[tc]),
+            LLMResponse(content="The file contains: important data"),
+        ]
+    )
 
     runner = AgentRunner(
-        config=config, provider=provider, sandbox=sandbox,
+        config=config,
+        provider=provider,
+        sandbox=sandbox,
         min_call_interval=0,
     )
     events = await _collect(runner, "Read data.txt")
@@ -147,13 +152,17 @@ async def test_sandbox_blocks_dangerous_command_in_pipeline(tmp_path: Path):
     sandbox = ProcessSandbox(workspace=tmp_path)
 
     tc = ToolCall(id="tc1", name="shell_execute", arguments={"command": "cat ~/.ssh/id_rsa"})
-    provider = ScriptedProvider([
-        LLMResponse(content="", tool_calls=[tc]),
-        LLMResponse(content="I can't access that file."),
-    ])
+    provider = ScriptedProvider(
+        [
+            LLMResponse(content="", tool_calls=[tc]),
+            LLMResponse(content="I can't access that file."),
+        ]
+    )
 
     runner = AgentRunner(
-        config=config, provider=provider, sandbox=sandbox,
+        config=config,
+        provider=provider,
+        sandbox=sandbox,
         min_call_interval=0,
     )
     events = await _collect(runner, "Show me SSH keys")
@@ -182,14 +191,18 @@ permissions:
     sandbox = ProcessSandbox(workspace=tmp_path)
 
     tc = ToolCall(id="tc1", name="shell_execute", arguments={"command": "echo hi"})
-    provider = ScriptedProvider([
-        LLMResponse(content="", tool_calls=[tc]),
-        LLMResponse(content="Shell is blocked, I'll try another way."),
-    ])
+    provider = ScriptedProvider(
+        [
+            LLMResponse(content="", tool_calls=[tc]),
+            LLMResponse(content="Shell is blocked, I'll try another way."),
+        ]
+    )
 
     runner = AgentRunner(
-        config=config, provider=provider,
-        sandbox=sandbox, policy=policy,
+        config=config,
+        provider=provider,
+        sandbox=sandbox,
+        policy=policy,
         min_call_interval=0,
     )
     events = await _collect(runner, "Run a command")
@@ -207,9 +220,11 @@ permissions:
 async def test_knowledge_recall_and_store_full_cycle(tmp_path: Path):
     """Knowledge is recalled before the turn, stored after the turn."""
     config = _make_config(tmp_path)
-    provider = ScriptedProvider([
-        LLMResponse(content="Based on recalled knowledge, the answer is X."),
-    ])
+    provider = ScriptedProvider(
+        [
+            LLMResponse(content="Based on recalled knowledge, the answer is X."),
+        ]
+    )
 
     knowledge = MagicMock()
     knowledge.auto_recall = True
@@ -218,7 +233,9 @@ async def test_knowledge_recall_and_store_full_cycle(tmp_path: Path):
     knowledge.agent_id = "agent-test"
 
     runner = AgentRunner(
-        config=config, provider=provider, knowledge=knowledge,
+        config=config,
+        provider=provider,
+        knowledge=knowledge,
         min_call_interval=0,
     )
     events = await _collect(runner, "Tell me about X")
@@ -252,13 +269,15 @@ async def test_multi_turn_with_tools_and_knowledge(tmp_path: Path):
     sandbox = ProcessSandbox(workspace=tmp_path)
 
     tc = ToolCall(id="tc1", name="shell_execute", arguments={"command": f"cat {test_file}"})
-    provider = ScriptedProvider([
-        # Turn 1: LLM reads file
-        LLMResponse(content="Let me check your notes.", tool_calls=[tc]),
-        LLMResponse(content="You have a meeting at 3pm."),
-        # Turn 2: LLM answers directly
-        LLMResponse(content="Yes, that's confirmed."),
-    ])
+    provider = ScriptedProvider(
+        [
+            # Turn 1: LLM reads file
+            LLMResponse(content="Let me check your notes.", tool_calls=[tc]),
+            LLMResponse(content="You have a meeting at 3pm."),
+            # Turn 2: LLM answers directly
+            LLMResponse(content="Yes, that's confirmed."),
+        ]
+    )
 
     knowledge = MagicMock()
     knowledge.auto_recall = True
@@ -267,8 +286,10 @@ async def test_multi_turn_with_tools_and_knowledge(tmp_path: Path):
     knowledge.agent_id = "agent-multi"
 
     runner = AgentRunner(
-        config=config, provider=provider,
-        sandbox=sandbox, knowledge=knowledge,
+        config=config,
+        provider=provider,
+        sandbox=sandbox,
+        knowledge=knowledge,
         min_call_interval=0,
     )
 
@@ -298,17 +319,18 @@ async def test_multi_turn_with_tools_and_knowledge(tmp_path: Path):
 async def test_soul_md_used_as_system_prompt(tmp_path: Path):
     """SOUL.md content is passed as system prompt to every provider call."""
     soul_file = tmp_path / "SOUL.md"
-    soul_file.write_text(
-        "---\nname: TestBot\nrole: assistant\n---\n\nYou are a helpful test bot.\n"
-    )
+    soul_file.write_text("---\nname: TestBot\nrole: assistant\n---\n\nYou are a helpful test bot.\n")
 
     config = _make_config(tmp_path, soul_path=soul_file)
-    provider = ScriptedProvider([
-        LLMResponse(content="I am TestBot!"),
-    ])
+    provider = ScriptedProvider(
+        [
+            LLMResponse(content="I am TestBot!"),
+        ]
+    )
 
     runner = AgentRunner(
-        config=config, provider=provider,
+        config=config,
+        provider=provider,
         min_call_interval=0,
     )
     await _collect(runner, "Who are you?")
@@ -326,10 +348,12 @@ async def test_soul_md_used_as_system_prompt(tmp_path: Path):
 async def test_session_summarization_on_close(tmp_path: Path):
     """close_session() extracts and stores facts from conversation."""
     config = _make_config(tmp_path)
-    provider = ScriptedProvider([
-        LLMResponse(content="The API uses REST with JSON payloads."),
-        LLMResponse(content="Authentication is via Bearer tokens."),
-    ])
+    provider = ScriptedProvider(
+        [
+            LLMResponse(content="The API uses REST with JSON payloads."),
+            LLMResponse(content="Authentication is via Bearer tokens."),
+        ]
+    )
 
     knowledge = MagicMock()
     knowledge.auto_recall = True
@@ -342,7 +366,9 @@ async def test_session_summarization_on_close(tmp_path: Path):
     ]
 
     runner = AgentRunner(
-        config=config, provider=provider, knowledge=knowledge,
+        config=config,
+        provider=provider,
+        knowledge=knowledge,
         min_call_interval=0,
     )
 
@@ -366,16 +392,9 @@ async def test_session_summarization_on_close(tmp_path: Path):
 
 def test_agent_config_from_directory(tmp_path: Path):
     """AgentConfig.from_dir wires up workspace, soul, and tools."""
-    config_yaml = (
-        "name: my-agent\n"
-        "provider: claude\n"
-        "sandbox_type: process\n"
-        "tools: filesystem,shell\n"
-    )
+    config_yaml = "name: my-agent\nprovider: claude\nsandbox_type: process\ntools: filesystem,shell\n"
     (tmp_path / "config.yaml").write_text(config_yaml)
-    (tmp_path / "SOUL.md").write_text(
-        "---\nname: my-agent\nrole: default\n---\n\nBe helpful.\n"
-    )
+    (tmp_path / "SOUL.md").write_text("---\nname: my-agent\nrole: default\n---\n\nBe helpful.\n")
 
     config = AgentConfig.from_dir(tmp_path)
 
@@ -400,14 +419,18 @@ async def test_rate_limiting_enforced(tmp_path: Path):
 
     config = _make_config(tmp_path)
     tc = ToolCall(id="tc1", name="shell_execute", arguments={"command": "echo ok"})
-    provider = ScriptedProvider([
-        LLMResponse(content="", tool_calls=[tc]),
-        LLMResponse(content="Done"),
-    ])
+    provider = ScriptedProvider(
+        [
+            LLMResponse(content="", tool_calls=[tc]),
+            LLMResponse(content="Done"),
+        ]
+    )
     sandbox = ProcessSandbox(workspace=tmp_path)
 
     runner = AgentRunner(
-        config=config, provider=provider, sandbox=sandbox,
+        config=config,
+        provider=provider,
+        sandbox=sandbox,
         min_call_interval=0.2,  # 200ms minimum between calls
     )
 
@@ -471,8 +494,9 @@ def test_chat_session_concurrent_access(tmp_path: Path):
 
 def test_structured_logging_setup():
     """setup_logging should not raise and should configure the logger."""
-    from contextclaw.logging_config import setup_logging
     import logging
+
+    from contextclaw.logging_config import setup_logging
 
     setup_logging(level="DEBUG", structured=True)
     logger = logging.getLogger("contextclaw.test_integration")
