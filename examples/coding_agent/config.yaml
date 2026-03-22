@@ -1,0 +1,4 @@
+name: coding-assistant
+provider: claude
+sandbox_type: docker
+tools: filesystem,shell

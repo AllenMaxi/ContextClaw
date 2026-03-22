@@ -1,0 +1,4 @@
+name: research-assistant
+provider: claude
+sandbox_type: process
+tools: filesystem,web

@@ -1,0 +1,35 @@
+version: 1
+sandbox:
+  type: docker
+  resource_limits:
+    cpu: 1
+    memory_mb: 512
+    timeout_seconds: 300
+
+permissions:
+  filesystem:
+    allowed:
+      - /workspace
+    blocked:
+      - ~/.ssh
+      - ~/.aws
+      - ~/.gnupg
+      - /etc
+  network:
+    allowed: true
+    blocked_hosts:
+  tools:
+    auto_approve:
+      - filesystem_read
+      - web_search
+    require_confirm:
+      - filesystem_write
+      - shell_execute
+    blocked:
+      - rm_rf
+      - format_disk
+
+knowledge:
+  auto_store: true
+  auto_recall: true
+  recall_limit: 5

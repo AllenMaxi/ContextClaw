@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "contextclaw"
+version = "0.1.0"
+description = "ContextClaw — Knowledge-aware agent orchestrator powered by ContextGraph"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+knowledge = ["contextgraph-sdk"]
+claude = ["anthropic"]
+openai = ["openai"]
+docker = ["docker"]
+all = ["contextclaw[knowledge,claude,openai,docker]"]
+
+[project.scripts]
+cclaw = "contextclaw.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["contextclaw"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
