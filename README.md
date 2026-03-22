@@ -1,4 +1,7 @@
 <p align="center">
+  <img src="assets/contextclaw-mascot.svg" alt="ContextClaw mascot" width="320">
+</p>
+<p align="center">
   <h1 align="center">ContextClaw</h1>
   <p align="center">
     <strong>Knowledge-aware agent orchestrator powered by ContextGraph</strong>

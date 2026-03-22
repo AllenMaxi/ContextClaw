@@ -1,0 +1,56 @@
+<svg width="480" height="360" viewBox="0 0 480 360" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">ContextClaw mascot</title>
+  <desc id="desc">A stylized crab-like mascot with an orange claw presenting a glowing context orb surrounded by connected knowledge nodes.</desc>
+  <defs>
+    <linearGradient id="orbGlow" x1="150" y1="90" x2="320" y2="250" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#D9FFF5"/>
+      <stop offset="0.55" stop-color="#86EFCC"/>
+      <stop offset="1" stop-color="#14B8A6"/>
+    </linearGradient>
+    <linearGradient id="shell" x1="122" y1="126" x2="332" y2="286" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FF9A5A"/>
+      <stop offset="1" stop-color="#F05A28"/>
+    </linearGradient>
+    <linearGradient id="claw" x1="270" y1="58" x2="398" y2="188" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFD36B"/>
+      <stop offset="1" stop-color="#F97316"/>
+    </linearGradient>
+    <filter id="softShadow" x="54" y="34" width="374" height="292" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#0F172A" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+
+  <ellipse cx="242" cy="292" rx="126" ry="20" fill="#0F172A" fill-opacity="0.08"/>
+
+  <g filter="url(#softShadow)">
+    <circle cx="244" cy="168" r="76" fill="url(#orbGlow)" stroke="#0F172A" stroke-width="10"/>
+    <path d="M172 184C193 159 216 148 243 148C269 148 292 159 315 184" stroke="#0F766E" stroke-width="10" stroke-linecap="round"/>
+    <circle cx="214" cy="164" r="11" fill="#0F172A"/>
+    <circle cx="272" cy="164" r="11" fill="#0F172A"/>
+    <path d="M221 198C233 211 253 213 267 200" stroke="#0F172A" stroke-width="8" stroke-linecap="round"/>
+
+    <path d="M139 252C115 239 102 223 100 204C98 178 115 156 140 146C149 142 157 149 156 158C154 176 165 194 184 203C191 206 195 214 193 221C189 237 175 248 158 253C151 255 145 255 139 252Z" fill="url(#shell)" stroke="#0F172A" stroke-width="10" stroke-linejoin="round"/>
+    <path d="M347 249C373 237 388 220 391 198C394 170 378 148 353 139C344 136 336 142 337 152C339 172 329 189 310 198C303 201 299 209 301 217C305 234 319 245 336 249C340 250 344 250 347 249Z" fill="url(#shell)" stroke="#0F172A" stroke-width="10" stroke-linejoin="round"/>
+
+    <path d="M196 251C182 270 162 280 136 282" stroke="#0F172A" stroke-width="10" stroke-linecap="round"/>
+    <path d="M213 263C206 286 189 303 160 314" stroke="#0F172A" stroke-width="10" stroke-linecap="round"/>
+    <path d="M291 251C305 270 325 280 351 282" stroke="#0F172A" stroke-width="10" stroke-linecap="round"/>
+    <path d="M274 263C281 286 298 303 327 314" stroke="#0F172A" stroke-width="10" stroke-linecap="round"/>
+
+    <path d="M292 111C316 93 333 77 343 61C352 47 367 44 380 51C394 58 399 72 392 85C384 99 371 111 351 121" fill="url(#claw)" stroke="#0F172A" stroke-width="10" stroke-linejoin="round"/>
+    <path d="M333 122C356 124 375 119 392 106C405 96 422 101 429 116C436 132 430 148 415 155C393 166 367 170 337 165" fill="url(#claw)" stroke="#0F172A" stroke-width="10" stroke-linejoin="round"/>
+    <path d="M300 146C336 132 363 131 389 138" stroke="#0F172A" stroke-width="10" stroke-linecap="round"/>
+
+    <circle cx="159" cy="97" r="18" fill="#14B8A6" stroke="#0F172A" stroke-width="8"/>
+    <circle cx="202" cy="70" r="12" fill="#F8FAFC" stroke="#0F172A" stroke-width="6"/>
+    <circle cx="328" cy="76" r="14" fill="#F8FAFC" stroke="#0F172A" stroke-width="6"/>
+    <circle cx="367" cy="193" r="15" fill="#86EFCC" stroke="#0F172A" stroke-width="6"/>
+    <circle cx="134" cy="215" r="13" fill="#F8FAFC" stroke="#0F172A" stroke-width="6"/>
+
+    <path d="M173 110L193 80" stroke="#0F172A" stroke-width="6" stroke-linecap="round"/>
+    <path d="M210 82L230 103" stroke="#0F172A" stroke-width="6" stroke-linecap="round"/>
+    <path d="M320 91L299 112" stroke="#0F172A" stroke-width="6" stroke-linecap="round"/>
+    <path d="M352 181L330 178" stroke="#0F172A" stroke-width="6" stroke-linecap="round"/>
+    <path d="M147 202L175 194" stroke="#0F172A" stroke-width="6" stroke-linecap="round"/>
+  </g>
+</svg>
