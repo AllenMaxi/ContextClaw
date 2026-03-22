@@ -77,6 +77,22 @@ def test_chat_server_start_stop():
     assert server._server is None
 
 
+def test_chat_server_stop_releases_port():
+    """Stopping the server should close the listening socket."""
+    import socket
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+
+    server = ChatServer(host="127.0.0.1", port=port)
+    server.start()
+    server.stop()
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", port))
+
+
 def test_chat_server_status_endpoint():
     """GET /status should return JSON status."""
     import socket

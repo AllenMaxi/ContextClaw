@@ -247,7 +247,9 @@ class ChatServer:
     def stop(self) -> None:
         # Stop accepting new requests first
         if self._server is not None:
-            self._server.shutdown()
+            server = self._server
+            server.shutdown()
+            server.server_close()
             self._server = None
         if self._thread is not None:
             self._thread.join(timeout=5)
