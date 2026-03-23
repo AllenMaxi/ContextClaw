@@ -1,0 +1,16 @@
+id: contextgraph-mcp
+version: 1.0.0
+display_name: ContextGraph MCP Connector
+description: First-party MCP connector metadata for ContextGraph-backed recall, trust, and graph-aware workflows.
+stability: preview
+tags: [mcp, memory, graph]
+type: mcp
+mcp:
+  name: contextgraph
+  command: [python3, -m, contextclaw.catalog_mcp_server, contextgraph-mcp]
+required_env:
+  CONTEXTGRAPH_API_KEY: ContextGraph API key for memory and graph operations.
+policy_defaults:
+  require_confirm: [mcp__contextgraph__*]
+  blocked: []
+tools_exposed: [mcp__contextgraph__status]

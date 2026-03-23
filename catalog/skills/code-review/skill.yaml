@@ -1,0 +1,8 @@
+id: code-review
+version: 1.0.0
+display_name: Code Review Operator
+description: Review-focused workflow for finding regressions, missing tests, and operational risk.
+stability: stable
+tags: [review, quality]
+entrypoint: SKILL.md
+requires_connectors: []

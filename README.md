@@ -4,11 +4,15 @@
 <p align="center">
   <h1 align="center">ContextClaw</h1>
   <p align="center">
-    <strong>Knowledge-aware agent orchestrator powered by ContextGraph</strong>
+    <strong>Deep-agent style orchestration with real memory, safer tools, and a first-party catalog</strong>
   </p>
   <p align="center">
     <a href="#"><img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python 3.11+"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT License"></a>
+    <a href="#"><img src="https://img.shields.io/badge/memory-ContextGraph-black.svg" alt="ContextGraph memory"></a>
+    <a href="#"><img src="https://img.shields.io/badge/tools-MCP%20%2B%20built--in-orange.svg" alt="MCP and built-in tools"></a>
+    <a href="#"><img src="https://img.shields.io/badge/runtime-subagents%20%2B%20checkpoints-purple.svg" alt="Subagents and checkpoints"></a>
+    <a href="#"><img src="https://img.shields.io/badge/catalog-connectors%20%2B%20skills-teal.svg" alt="First-party catalog"></a>
   </p>
 </p>
 
@@ -16,14 +20,50 @@
 
 ## What is ContextClaw?
 
-ContextClaw is a lightweight agent runtime (~2500 lines) that gives LLM agents **persistent memory, sandbox isolation, and governance** — all wired through [ContextGraph](https://github.com/AllenMaxi/contextgraph) as the knowledge plane.
+ContextClaw is a lightweight Python agent runtime that gives LLM agents the
+things people actually want once the toy demo is over: **memory, safer tool
+execution, reusable skills, MCP support, delegation, and long-lived sessions**.
+
+It is built for people who want the feel of a "deep agent" workflow without
+getting trapped inside a giant framework.
+
+The short pitch:
+
+- **ContextClaw runs the agents**
+- **ContextGraph gives them memory, trust, and discovery**
+- **The first-party catalog makes setup feel productized instead of improvised**
 
 It combines the best patterns from the Claw ecosystem:
 - **OpenClaw's** provider abstraction (swap LLMs without changing agent code)
 - **NanoClaw's** minimal footprint (no framework bloat, just Python)
 - **PicoClaw's** sandbox-first security (every command runs in isolation)
 
-Then adds what none of them have: **cross-session memory** via ContextGraph.
+Then adds what none of them have: **cross-session memory** via ContextGraph,
+plus a curated connector and packaged-skill layer that makes agents easier to
+install, inspect, and evolve.
+
+## Why It Stands Out
+
+- **Real memory, not just chat history.** Agents can recall, store, and summarize knowledge across sessions through ContextGraph.
+- **Safer by default.** Sandboxes, YAML policy guardrails, path protection, and approval gates are built into the runtime.
+- **Deep-agent ergonomics.** Built-in planning, task delegation, checkpoints, and MCP-backed tools are ready without extra scaffolding.
+- **Small enough to understand.** The runtime is still compact and hackable, so teams can actually read it, extend it, and trust it.
+- **Better day-one UX.** First-party connectors and packaged skills make installation feel curated instead of "wire everything yourself."
+
+## The 30-Second Mental Model
+
+If you only remember one thing, remember this:
+
+> `ContextClaw` is the runtime.
+> `ContextGraph` is the memory and coordination layer.
+
+That means you can:
+
+- run an agent locally or in a sandbox
+- give it tools and packaged skills
+- let it delegate work to subagents
+- resume later from checkpoints
+- connect it to ContextGraph when you want durable memory and discovery
 
 ## Why ContextClaw over the other Claws?
 
@@ -48,17 +88,31 @@ Then adds what none of them have: **cross-session memory** via ContextGraph.
 
 ContextClaw now covers the core "deep agent" runtime path well: built-in and
 MCP-backed tools, policy-gated execution, task delegation to sub-agents,
-session checkpoints, and ContextGraph-powered memory.
+session checkpoints, ContextGraph-powered memory, and an initial first-party
+catalog for connectors and packaged skills.
 
-It is not yet at full parity with every connector or packaged integration in
-the wider Claw family. The main remaining gap is ecosystem breadth rather than
-runtime depth: a broader first-party connector or MCP catalog and a larger set
-of reusable packaged skills.
+It is still not at full parity with every connector or packaged integration in
+the wider Claw family. The remaining gap is breadth rather than runtime depth:
+more first-party connectors, richer packaged skills, and a larger turnkey
+ecosystem on top of the runtime that already works.
 
 The short version:
 
 - The runtime pieces are in place and working.
-- The biggest remaining investment is more turnkey connectors and skills.
+- An initial curated connector and skill catalog now ships with ContextClaw.
+- The biggest remaining investment is expanding that catalog over time.
+
+## What You Get On Day One
+
+- **Providers:** Claude, OpenAI, and Ollama
+- **Built-in tools:** filesystem, web, shell, and planning
+- **Deep-agent aliases:** `read_file`, `write_file`, `ls`, `edit_file`, `glob`, `grep`, `execute`, `read_todos`
+- **MCP support:** manual registries plus generated registries from the first-party catalog
+- **Packaged skills:** installable skill packs that land in `skills/packages/`
+- **Subagents:** delegate work through the `task` tool
+- **Checkpoints:** resume long-lived sessions automatically
+- **Policy overlays:** generated connector rules merge safely with manual policy files
+- **ContextGraph integration:** recall, store, summarize, and discover
 
 ## Quick Start
 
@@ -69,11 +123,41 @@ pip install -e ".[all]"
 # Create an agent
 cclaw create research-bot --template research --provider claude
 
+# Browse the bundled catalog
+cclaw connectors list
+cclaw skills list
+
+# Install a connector + packaged skill
+cclaw connectors install research-bot github
+cclaw skills install research-bot github-maintainer
+
 # Start chatting
 cclaw chat research-bot
 ```
 
-That's it. Three commands to a working agent with sandbox isolation, tool access, and built-in planning tools.
+That's it. A few commands get you to a working agent with sandbox isolation,
+tool access, packaged skills, and generated MCP/policy state.
+
+### Fast Aha-Moment
+
+If you want the quickest "okay, this is actually different" path:
+
+```bash
+cclaw create demo --template research --provider openai
+cclaw skills install demo github-maintainer
+cclaw status demo
+cclaw chat demo
+```
+
+After `skills install`, the agent has:
+
+- a synced catalog state
+- generated MCP and policy files
+- a packaged skill copied into the workspace
+- the required connector auto-installed
+
+That is the key product experience: agents that feel assembled intentionally,
+not hand-wired one config file at a time.
 
 ### Link to ContextGraph (optional)
 
@@ -105,9 +189,36 @@ When `--register` succeeds, ContextClaw also switches the config to
 `${CONTEXTGRAPH_AGENT_KEY}` and prints the issued agent key once so you can
 export it for future chats.
 
+## Why People Will Reach For This
+
+ContextClaw is a good fit when you want to ship agents that are:
+
+- more capable than a single chat wrapper
+- easier to reason about than a heavyweight orchestration framework
+- safer than raw shell-and-prompt experiments
+- more durable than "everything disappears when the process exits"
+- more reusable than copying one giant system prompt between projects
+
+## Common Use Cases
+
+- **Research agents** that gather sources, compare options, and preserve important findings
+- **Coding agents** that can inspect files, run commands safely, and keep reusable skills per workspace
+- **Maintainer agents** that combine GitHub workflows, checkpoints, and packaged operational prompts
+- **QA and debugging agents** that reproduce issues, keep task lists, and delegate specialized subtasks
+- **Team memory agents** that pair ContextClaw execution with ContextGraph-backed recall and trust
+- **Launch and content agents** that package repeatable prompts, templates, and demo workflows for releases
+
 ## Demo
 
 [![ContextClaw promo demo](../docs/assets/contextclaw-promo.gif)](../docs/assets/contextclaw-promo.mp4)
+
+The demo shows the product story end to end:
+
+- creating an agent
+- installing a packaged skill
+- generating MCP and policy state
+- delegating through `task`
+- connecting the runtime story back to ContextGraph
 
 Generate the vertical demo asset and walkthrough:
 
@@ -264,11 +375,54 @@ deep-agent-style aliases (`read_file`, `write_file`, `ls`, `edit_file`, `glob`,
 `grep`, `execute`, `read_todos`) map cleanly onto the same ContextClaw runtime,
 so migrating prompts is low-friction.
 
+### First-Party Catalog
+
+ContextClaw now ships a bundled first-party catalog with curated connectors and
+packaged skills. The launch catalog includes:
+
+- Connectors: `filesystem`, `web`, `shell`, `github`, `playwright`, `notion`, `slack`, `contextgraph-mcp`
+- Skills: `research`, `coding`, `code-review`, `qa-triage`, `docs-writer`, `launch-marketing`, `memory-governor`, `github-maintainer`, `notion-knowledge-base`, `playwright-debugger`
+
+Catalog state is agent-local and reproducible:
+
+```text
+my-agent/
+├── .contextclaw/
+│   ├── catalog.yaml
+│   ├── catalog.lock.json
+│   └── generated/
+│       ├── mcp_servers.json
+│       └── policy.yaml
+└── skills/
+    └── packages/
+        └── <skill-id>/
+```
+
+Install and sync from the CLI:
+
+```bash
+cclaw connectors install my-agent github
+cclaw skills install my-agent github-maintainer
+cclaw connectors sync my-agent
+cclaw status my-agent
+```
+
+This is the part that makes agents feel reproducible. Instead of handing around
+one-off prompts and config snippets, you can install named capabilities into a
+workspace and regenerate the same state later.
+
+The generated policy layer is restrictive only: it can require confirmation or
+block tools, but it never auto-approves new capabilities.
+
 ### MCP Registry and Invocation
 
 Agents can auto-discover an `mcp_servers.json` file in their workspace and
-start MCP servers on chat startup. Each discovered MCP tool is registered as a
-first-class model tool using the name format:
+start MCP servers on chat startup. The first-party catalog can also generate an
+MCP registry at `.contextclaw/generated/mcp_servers.json`. Manual registries
+keep precedence over generated ones when the same server name appears twice.
+
+Each discovered MCP tool is registered as a first-class model tool using the
+name format:
 
 ```text
 mcp__<server_name>__<tool_name>
@@ -357,6 +511,21 @@ Each skill file is appended to the system prompt as an extra capability block,
 making it easy to keep role instructions modular instead of overloading one
 large `SOUL.md`.
 
+Packaged skills add a lightweight manifest:
+
+```text
+skills/
+└── packages/
+    └── github-maintainer/
+        ├── skill.yaml
+        ├── SKILL.md
+        └── templates/...
+```
+
+When a directory contains `skill.yaml`, only that package's `SKILL.md` is
+auto-injected into the prompt. Reference and template markdown stays on disk
+for agents and operators to use without bloating the system prompt.
+
 ### Structured Logging
 
 JSON-lines output for production, human-readable for development:
@@ -418,6 +587,16 @@ cclaw start <name>
 cclaw chat <name>
 cclaw status <name>
 cclaw link <name> --cg-url <url> --api-key <key>
+cclaw connectors list
+cclaw connectors info <connector-id>
+cclaw connectors install <name> <connector-id>
+cclaw connectors remove <name> <connector-id>
+cclaw connectors sync <name>
+cclaw skills list
+cclaw skills info <skill-id>
+cclaw skills install <name> <skill-id> [--no-deps]
+cclaw skills remove <name> <skill-id>
+cclaw skills sync <name>
 ```
 
 Global flags:
@@ -453,45 +632,52 @@ pip install pytest pytest-asyncio
 python -m pytest tests/ -v
 ```
 
-193 tests covering:
+206 tests covering:
 - Agent runner (ReAct loop, retry logic, tool validation, token tracking)
 - Sandbox (path traversal, shell metacharacters, Docker, timeouts)
 - Policy engine (tool/path permissions)
 - Knowledge bridge (recall, store, summarization, JSON parsing)
 - Config (env var resolution, YAML parsing)
+- Catalog engine (connector manifests, packaged skills, generated state)
 - Integration (full lifecycle, multi-turn, concurrent access)
 
 ## Project Structure
 
-```
-contextclaw/
-├── chat/
-│   ├── server.py        # HTTP + SSE chat server (threaded)
-│   └── session.py       # Thread-safe conversation history
-├── config/
-│   ├── agent_config.py  # YAML config with env var resolution
-│   ├── skills.py        # Markdown skill loading and prompt rendering
-│   └── soul.py          # SOUL.md parser
-├── runtime.py           # Shared runtime builders for providers/tools/policy
-├── knowledge/
-│   └── bridge.py        # ContextGraph integration
-├── providers/
-│   ├── protocol.py      # LLMProvider protocol
-│   ├── claude.py        # Anthropic provider
-│   ├── openai.py        # OpenAI provider
-│   └── ollama.py        # Ollama provider
-├── sandbox/
-│   ├── protocol.py      # Sandbox protocol
-│   ├── process.py       # Process sandbox with path protection
-│   ├── docker.py        # Docker sandbox with resource limits
-│   └── policy.py        # YAML policy engine
-├── tools/
-│   ├── manager.py       # Tool registry
-│   ├── bundles.py       # Pre-built tool bundles
-│   └── mcp.py           # MCP stdio client and registry loading
-├── runner.py            # AgentRunner (ReAct loop)
-├── logging_config.py    # Structured logging setup
-└── cli.py               # CLI entry point
+```text
+ContextClaw/
+├── catalog/                 # First-party connector and skill catalog
+├── tests/                   # Runtime, catalog, and integration coverage
+└── contextclaw/
+    ├── chat/
+    │   ├── server.py        # HTTP + SSE chat server (threaded)
+    │   └── session.py       # Thread-safe conversation history
+    ├── catalog_engine.py    # Catalog manifests, lockfile sync, generated state
+    ├── catalog_mcp_server.py # Built-in MCP status server for first-party connectors
+    ├── config/
+    │   ├── agent_config.py  # YAML config with env var resolution
+    │   ├── skills.py        # Markdown skill loading and prompt rendering
+    │   └── soul.py          # SOUL.md parser
+    ├── runtime.py           # Shared runtime builders for providers/tools/policy
+    ├── knowledge/
+    │   └── bridge.py        # ContextGraph integration
+    ├── providers/
+    │   ├── protocol.py      # LLMProvider protocol
+    │   ├── claude.py        # Anthropic provider
+    │   ├── openai.py        # OpenAI provider
+    │   └── ollama.py        # Ollama provider
+    ├── sandbox/
+    │   ├── protocol.py      # Sandbox protocol
+    │   ├── process.py       # Process sandbox with path protection
+    │   ├── docker.py        # Docker sandbox with resource limits
+    │   └── policy.py        # YAML policy engine
+    ├── tools/
+    │   ├── manager.py       # Tool registry
+    │   ├── bundles.py       # Pre-built tool bundles
+    │   └── mcp.py           # MCP stdio client and registry loading
+    ├── runner.py            # AgentRunner (ReAct loop)
+    ├── simple_yaml.py       # Minimal YAML subset for config/catalog parsing
+    ├── logging_config.py    # Structured logging setup
+    └── cli.py               # CLI entry point
 ```
 
 ## Security

@@ -1,0 +1,16 @@
+id: slack
+version: 1.0.0
+display_name: Slack Connector
+description: First-party MCP connector metadata for team messaging, handoffs, and incident coordination.
+stability: preview
+tags: [mcp, communication, ops]
+type: mcp
+mcp:
+  name: slack
+  command: [python3, -m, contextclaw.catalog_mcp_server, slack]
+required_env:
+  SLACK_BOT_TOKEN: Slack bot token used for authenticated MCP operations.
+policy_defaults:
+  require_confirm: [mcp__slack__*]
+  blocked: []
+tools_exposed: [mcp__slack__status]

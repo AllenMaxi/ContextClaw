@@ -1,0 +1,12 @@
+id: shell
+version: 1.0.0
+display_name: Shell Tools
+description: Built-in shell execution tools for agentic coding, automation, and diagnostics.
+stability: stable
+tags: [builtin, automation]
+type: bundle
+bundles: [shell]
+policy_defaults:
+  require_confirm: [shell_execute, execute]
+  blocked: []
+tools_exposed: [shell_execute, execute]

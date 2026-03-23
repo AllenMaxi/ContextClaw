@@ -1,0 +1,16 @@
+id: notion
+version: 1.0.0
+display_name: Notion Connector
+description: First-party MCP connector metadata for publishing and querying structured workspace knowledge in Notion.
+stability: preview
+tags: [mcp, docs, knowledge]
+type: mcp
+mcp:
+  name: notion
+  command: [python3, -m, contextclaw.catalog_mcp_server, notion]
+required_env:
+  NOTION_TOKEN: Notion integration token used for authenticated MCP operations.
+policy_defaults:
+  require_confirm: [mcp__notion__*]
+  blocked: []
+tools_exposed: [mcp__notion__status]

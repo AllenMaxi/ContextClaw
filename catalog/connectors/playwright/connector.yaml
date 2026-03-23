@@ -1,0 +1,14 @@
+id: playwright
+version: 1.0.0
+display_name: Playwright Connector
+description: First-party MCP connector metadata for browser automation and UI debugging flows.
+stability: preview
+tags: [mcp, browser, qa]
+type: mcp
+mcp:
+  name: playwright
+  command: [python3, -m, contextclaw.catalog_mcp_server, playwright]
+policy_defaults:
+  require_confirm: [mcp__playwright__*]
+  blocked: []
+tools_exposed: [mcp__playwright__status]

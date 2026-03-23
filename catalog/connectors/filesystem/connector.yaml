@@ -1,0 +1,12 @@
+id: filesystem
+version: 1.0.0
+display_name: Filesystem Tools
+description: Built-in file read, write, edit, list, glob, and grep tools for local workspaces.
+stability: stable
+tags: [builtin, files]
+type: bundle
+bundles: [filesystem]
+policy_defaults:
+  require_confirm: []
+  blocked: []
+tools_exposed: [filesystem_read, filesystem_write, filesystem_list, read_file, write_file, ls, edit_file, glob, grep]

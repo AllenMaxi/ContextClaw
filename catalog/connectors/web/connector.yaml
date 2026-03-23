@@ -1,0 +1,12 @@
+id: web
+version: 1.0.0
+display_name: Web Tools
+description: Built-in web search and fetch tools for lightweight research workflows.
+stability: stable
+tags: [builtin, research]
+type: bundle
+bundles: [web]
+policy_defaults:
+  require_confirm: []
+  blocked: []
+tools_exposed: [web_search, web_fetch]

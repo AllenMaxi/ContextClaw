@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -99,12 +102,23 @@ class ToolManager:
             client = self._mcp_clients.pop(name)
             await client.stop()
 
-    async def load_mcp_registry(self, path: Path) -> None:
+    async def load_mcp_registry(
+        self, path: Path, *, skip_existing_servers: bool = False
+    ) -> None:
         """Start MCP servers from a registry file and register their tools."""
         from ..config.agent_config import _resolve_env
         from .mcp import MCPServerClient, load_mcp_registry_config
 
         for server in load_mcp_registry_config(path, _resolve_env):
+            if server.name in self._mcp_clients:
+                if skip_existing_servers:
+                    logger.warning(
+                        "Skipping MCP server '%s' from %s because it is already loaded",
+                        server.name,
+                        path,
+                    )
+                    continue
+                raise ValueError(f"MCP server '{server.name}' is already loaded.")
             client = MCPServerClient(server)
             await client.start()
             self._mcp_clients[server.name] = client

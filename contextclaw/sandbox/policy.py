@@ -136,6 +136,50 @@ def _as_bool(value: object, default: bool = True) -> bool:
     return default
 
 
+def merge_policy_dicts(base: dict, overlay: dict) -> dict:
+    """Merge a generated restrictive policy overlay into a base policy."""
+    merged = {
+        "permissions": {
+            "tools": {
+                "auto_approve": _as_list(
+                    ((base.get("permissions") or {}).get("tools") or {}).get(
+                        "auto_approve", []
+                    )
+                ),
+                "require_confirm": _as_list(
+                    ((base.get("permissions") or {}).get("tools") or {}).get(
+                        "require_confirm", []
+                    )
+                ),
+                "blocked": _as_list(
+                    ((base.get("permissions") or {}).get("tools") or {}).get(
+                        "blocked", []
+                    )
+                ),
+            },
+            "filesystem": dict(
+                ((base.get("permissions") or {}).get("filesystem") or {})
+            ),
+        },
+        "sandbox": dict(base.get("sandbox", {})),
+    }
+
+    overlay_tools = (overlay.get("permissions") or {}).get("tools") or {}
+    merged["permissions"]["tools"]["require_confirm"] = sorted(
+        dict.fromkeys(
+            merged["permissions"]["tools"]["require_confirm"]
+            + _as_list(overlay_tools.get("require_confirm", []))
+        )
+    )
+    merged["permissions"]["tools"]["blocked"] = sorted(
+        dict.fromkeys(
+            merged["permissions"]["tools"]["blocked"]
+            + _as_list(overlay_tools.get("blocked", []))
+        )
+    )
+    return merged
+
+
 # ---------------------------------------------------------------------------
 # PolicyEngine
 # ---------------------------------------------------------------------------
@@ -195,6 +239,24 @@ class PolicyEngine:
         """Parse a policy from a YAML string (useful for testing)."""
         return cls(_parse_policy_yaml(text))
 
+    @classmethod
+    def from_files(
+        cls, base_path: Path | None, overlay_path: Path | None
+    ) -> PolicyEngine | None:
+        if base_path is None and overlay_path is None:
+            return None
+        base = (
+            _parse_policy_yaml(base_path.read_text(encoding="utf-8"))
+            if base_path and base_path.exists()
+            else {}
+        )
+        overlay = (
+            _parse_policy_yaml(overlay_path.read_text(encoding="utf-8"))
+            if overlay_path and overlay_path.exists()
+            else {}
+        )
+        return cls(merge_policy_dicts(base, overlay))
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -204,11 +266,11 @@ class PolicyEngine:
 
         Precedence: blocked > auto_approve > require_confirm > confirm (default).
         """
-        if name in self._blocked_tools:
+        if any(_tool_rule_matches(name, rule) for rule in self._blocked_tools):
             return "block"
-        if name in self._auto_approve:
+        if any(_tool_rule_matches(name, rule) for rule in self._auto_approve):
             return "allow"
-        if name in self._require_confirm:
+        if any(_tool_rule_matches(name, rule) for rule in self._require_confirm):
             return "confirm"
         # Unknown tools require confirmation by default (safe default)
         return "confirm"
@@ -258,3 +320,9 @@ class PolicyEngine:
             cfg["resource_limits"] = limits
 
         return cfg
+
+
+def _tool_rule_matches(name: str, rule: str) -> bool:
+    if rule.endswith("*"):
+        return name.startswith(rule[:-1])
+    return name == rule

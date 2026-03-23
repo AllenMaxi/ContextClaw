@@ -1,0 +1,8 @@
+id: github-maintainer
+version: 1.0.0
+display_name: GitHub Maintainer
+description: Workflow for PR hygiene, issue triage, and repository maintenance powered by the GitHub connector.
+stability: preview
+tags: [github, maintenance]
+entrypoint: SKILL.md
+requires_connectors: [github]
