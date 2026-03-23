@@ -4,11 +4,15 @@
 <p align="center">
   <h1 align="center">ContextClaw</h1>
   <p align="center">
-    <strong>Knowledge-aware agent orchestrator powered by ContextGraph</strong>
+    <strong>Deep-agent style orchestration with real memory, safer tools, and a first-party catalog</strong>
   </p>
   <p align="center">
     <a href="#"><img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python 3.11+"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT License"></a>
+    <a href="#"><img src="https://img.shields.io/badge/memory-ContextGraph-black.svg" alt="ContextGraph memory"></a>
+    <a href="#"><img src="https://img.shields.io/badge/tools-MCP%20%2B%20built--in-orange.svg" alt="MCP and built-in tools"></a>
+    <a href="#"><img src="https://img.shields.io/badge/runtime-subagents%20%2B%20checkpoints-purple.svg" alt="Subagents and checkpoints"></a>
+    <a href="#"><img src="https://img.shields.io/badge/catalog-connectors%20%2B%20skills-teal.svg" alt="First-party catalog"></a>
   </p>
 </p>
 
@@ -16,14 +20,50 @@
 
 ## What is ContextClaw?
 
-ContextClaw is a lightweight agent runtime (~2500 lines) that gives LLM agents **persistent memory, sandbox isolation, and governance** — all wired through [ContextGraph](https://github.com/AllenMaxi/contextgraph) as the knowledge plane.
+ContextClaw is a lightweight Python agent runtime that gives LLM agents the
+things people actually want once the toy demo is over: **memory, safer tool
+execution, reusable skills, MCP support, delegation, and long-lived sessions**.
+
+It is built for people who want the feel of a "deep agent" workflow without
+getting trapped inside a giant framework.
+
+The short pitch:
+
+- **ContextClaw runs the agents**
+- **ContextGraph gives them memory, trust, and discovery**
+- **The first-party catalog makes setup feel productized instead of improvised**
 
 It combines the best patterns from the Claw ecosystem:
 - **OpenClaw's** provider abstraction (swap LLMs without changing agent code)
 - **NanoClaw's** minimal footprint (no framework bloat, just Python)
 - **PicoClaw's** sandbox-first security (every command runs in isolation)
 
-Then adds what none of them have: **cross-session memory** via ContextGraph.
+Then adds what none of them have: **cross-session memory** via ContextGraph,
+plus a curated connector and packaged-skill layer that makes agents easier to
+install, inspect, and evolve.
+
+## Why It Stands Out
+
+- **Real memory, not just chat history.** Agents can recall, store, and summarize knowledge across sessions through ContextGraph.
+- **Safer by default.** Sandboxes, YAML policy guardrails, path protection, and approval gates are built into the runtime.
+- **Deep-agent ergonomics.** Built-in planning, task delegation, checkpoints, and MCP-backed tools are ready without extra scaffolding.
+- **Small enough to understand.** The runtime is still compact and hackable, so teams can actually read it, extend it, and trust it.
+- **Better day-one UX.** First-party connectors and packaged skills make installation feel curated instead of "wire everything yourself."
+
+## The 30-Second Mental Model
+
+If you only remember one thing, remember this:
+
+> `ContextClaw` is the runtime.
+> `ContextGraph` is the memory and coordination layer.
+
+That means you can:
+
+- run an agent locally or in a sandbox
+- give it tools and packaged skills
+- let it delegate work to subagents
+- resume later from checkpoints
+- connect it to ContextGraph when you want durable memory and discovery
 
 ## Why ContextClaw over the other Claws?
 
@@ -62,6 +102,18 @@ The short version:
 - An initial curated connector and skill catalog now ships with ContextClaw.
 - The biggest remaining investment is expanding that catalog over time.
 
+## What You Get On Day One
+
+- **Providers:** Claude, OpenAI, and Ollama
+- **Built-in tools:** filesystem, web, shell, and planning
+- **Deep-agent aliases:** `read_file`, `write_file`, `ls`, `edit_file`, `glob`, `grep`, `execute`, `read_todos`
+- **MCP support:** manual registries plus generated registries from the first-party catalog
+- **Packaged skills:** installable skill packs that land in `skills/packages/`
+- **Subagents:** delegate work through the `task` tool
+- **Checkpoints:** resume long-lived sessions automatically
+- **Policy overlays:** generated connector rules merge safely with manual policy files
+- **ContextGraph integration:** recall, store, summarize, and discover
+
 ## Quick Start
 
 ```bash
@@ -83,8 +135,29 @@ cclaw skills install research-bot github-maintainer
 cclaw chat research-bot
 ```
 
-That's it. A few commands gets you to a working agent with sandbox isolation,
+That's it. A few commands get you to a working agent with sandbox isolation,
 tool access, packaged skills, and generated MCP/policy state.
+
+### Fast Aha-Moment
+
+If you want the quickest "okay, this is actually different" path:
+
+```bash
+cclaw create demo --template research --provider openai
+cclaw skills install demo github-maintainer
+cclaw status demo
+cclaw chat demo
+```
+
+After `skills install`, the agent has:
+
+- a synced catalog state
+- generated MCP and policy files
+- a packaged skill copied into the workspace
+- the required connector auto-installed
+
+That is the key product experience: agents that feel assembled intentionally,
+not hand-wired one config file at a time.
 
 ### Link to ContextGraph (optional)
 
@@ -116,9 +189,36 @@ When `--register` succeeds, ContextClaw also switches the config to
 `${CONTEXTGRAPH_AGENT_KEY}` and prints the issued agent key once so you can
 export it for future chats.
 
+## Why People Will Reach For This
+
+ContextClaw is a good fit when you want to ship agents that are:
+
+- more capable than a single chat wrapper
+- easier to reason about than a heavyweight orchestration framework
+- safer than raw shell-and-prompt experiments
+- more durable than "everything disappears when the process exits"
+- more reusable than copying one giant system prompt between projects
+
+## Common Use Cases
+
+- **Research agents** that gather sources, compare options, and preserve important findings
+- **Coding agents** that can inspect files, run commands safely, and keep reusable skills per workspace
+- **Maintainer agents** that combine GitHub workflows, checkpoints, and packaged operational prompts
+- **QA and debugging agents** that reproduce issues, keep task lists, and delegate specialized subtasks
+- **Team memory agents** that pair ContextClaw execution with ContextGraph-backed recall and trust
+- **Launch and content agents** that package repeatable prompts, templates, and demo workflows for releases
+
 ## Demo
 
 [![ContextClaw promo demo](../docs/assets/contextclaw-promo.gif)](../docs/assets/contextclaw-promo.mp4)
+
+The demo shows the product story end to end:
+
+- creating an agent
+- installing a packaged skill
+- generating MCP and policy state
+- delegating through `task`
+- connecting the runtime story back to ContextGraph
 
 Generate the vertical demo asset and walkthrough:
 
@@ -306,6 +406,10 @@ cclaw skills install my-agent github-maintainer
 cclaw connectors sync my-agent
 cclaw status my-agent
 ```
+
+This is the part that makes agents feel reproducible. Instead of handing around
+one-off prompts and config snippets, you can install named capabilities into a
+workspace and regenerate the same state later.
 
 The generated policy layer is restrictive only: it can require confirmation or
 block tools, but it never auto-approves new capabilities.
