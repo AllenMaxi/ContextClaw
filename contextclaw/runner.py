@@ -286,7 +286,9 @@ class AgentRunner:
 
                 # Policy check
                 if self.policy:
-                    decision = self.policy.check_tool(self._canonical_tool_name(tc.name))
+                    decision = self.policy.check_tool(
+                        self._canonical_tool_name(tc.name)
+                    )
                     if decision == "block":
                         result = f"Tool '{tc.name}' is blocked by policy."
                         logger.info("Blocked tool call: %s", tc.name)
@@ -431,7 +433,9 @@ class AgentRunner:
                             system_prompt=self._system_prompt,
                         )
             except Exception as exc:  # noqa: BLE001
-                logger.warning("Failed to load checkpoint %s: %s", self._checkpoint_path, exc)
+                logger.warning(
+                    "Failed to load checkpoint %s: %s", self._checkpoint_path, exc
+                )
         return ChatSession(system_prompt=self._system_prompt)
 
     def _save_checkpoint(self) -> None:
@@ -451,7 +455,11 @@ class AgentRunner:
     def _discover_subagents(self) -> dict[str, AgentConfig]:
         registry: dict[str, AgentConfig] = {}
         subagents_path = self.config.subagents_path
-        if subagents_path is None or not subagents_path.exists() or not subagents_path.is_dir():
+        if (
+            subagents_path is None
+            or not subagents_path.exists()
+            or not subagents_path.is_dir()
+        ):
             return registry
 
         for child in sorted(subagents_path.iterdir()):
@@ -555,7 +563,9 @@ class AgentRunner:
             if not path.is_dir():
                 return f"Error: '{path}' is not a directory"
             entries = []
-            for entry in sorted(path.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())):
+            for entry in sorted(
+                path.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())
+            ):
                 entries.append(
                     {
                         "name": entry.name,
@@ -649,7 +659,9 @@ class AgentRunner:
             if root.is_file():
                 files = [root]
             else:
-                files = [entry for entry in sorted(root.glob(include)) if entry.is_file()]
+                files = [
+                    entry for entry in sorted(root.glob(include)) if entry.is_file()
+                ]
 
             matches: list[dict[str, Any]] = []
             truncated = False
@@ -684,10 +696,15 @@ class AgentRunner:
             items = tool_call.arguments.get("items", [])
             if not isinstance(items, list) or not items:
                 return "Error: write_todos requires a non-empty 'items' array"
-            normalized_items = [str(item).strip() for item in items if str(item).strip()]
+            normalized_items = [
+                str(item).strip() for item in items if str(item).strip()
+            ]
             if not normalized_items:
                 return "Error: write_todos requires at least one non-empty item"
-            heading = str(tool_call.arguments.get("heading", "Task Plan")).strip() or "Task Plan"
+            heading = (
+                str(tool_call.arguments.get("heading", "Task Plan")).strip()
+                or "Task Plan"
+            )
             path_arg = str(tool_call.arguments.get("path", ".contextclaw/todos.md"))
             path = self._workspace_path(path_arg, allow_missing=True)
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -703,7 +720,10 @@ class AgentRunner:
             )
 
         if tool_name == "read_todos":
-            path_arg = str(tool_call.arguments.get("path", ".contextclaw/todos.md") or ".contextclaw/todos.md")
+            path_arg = str(
+                tool_call.arguments.get("path", ".contextclaw/todos.md")
+                or ".contextclaw/todos.md"
+            )
             path = self._workspace_path(path_arg, allow_missing=True)
             if not path.exists():
                 return json.dumps(
@@ -737,12 +757,16 @@ class AgentRunner:
                 return "Error: web_fetch only supports http and https URLs"
             req = urllib.request.Request(
                 url,
-                headers={"User-Agent": "ContextClaw/0.1 (+https://github.com/AllenMaxi/ContextGraph)"},
+                headers={
+                    "User-Agent": "ContextClaw/0.1 (+https://github.com/AllenMaxi/ContextGraph)"
+                },
             )
             with urllib.request.urlopen(req, timeout=15) as resp:
                 raw = resp.read(25000)
                 final_url = resp.geturl()
-                content_type = resp.headers.get("Content-Type", "application/octet-stream")
+                content_type = resp.headers.get(
+                    "Content-Type", "application/octet-stream"
+                )
             text = raw.decode("utf-8", errors="replace")
             if "html" in content_type:
                 parser = _HTMLTextExtractor()
@@ -772,7 +796,9 @@ class AgentRunner:
             url = f"https://api.duckduckgo.com/?{params}"
             req = urllib.request.Request(
                 url,
-                headers={"User-Agent": "ContextClaw/0.1 (+https://github.com/AllenMaxi/ContextGraph)"},
+                headers={
+                    "User-Agent": "ContextClaw/0.1 (+https://github.com/AllenMaxi/ContextGraph)"
+                },
             )
             with urllib.request.urlopen(req, timeout=15) as resp:
                 payload = json.loads(resp.read().decode("utf-8", errors="replace"))
@@ -925,7 +951,9 @@ class AgentRunner:
 
         if self.tools.is_mcp_tool(tool_call.name):
             try:
-                return await self.tools.call_mcp_tool(tool_call.name, tool_call.arguments)
+                return await self.tools.call_mcp_tool(
+                    tool_call.name, tool_call.arguments
+                )
             except Exception as exc:  # noqa: BLE001
                 logger.error("MCP tool execution error for %s: %s", tool_call.name, exc)
                 return f"Error executing MCP tool '{tool_call.name}': {exc}"

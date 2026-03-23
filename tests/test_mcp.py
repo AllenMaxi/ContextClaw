@@ -127,7 +127,9 @@ async def test_runner_executes_mcp_tool(tmp_path: Path):
             ]
         )
         config = AgentConfig(name="mcp-agent", workspace=tmp_path)
-        runner = AgentRunner(config=config, provider=provider, tools=manager, min_call_interval=0)
+        runner = AgentRunner(
+            config=config, provider=provider, tools=manager, min_call_interval=0
+        )
 
         events = []
         async for event in runner.run("Use MCP"):

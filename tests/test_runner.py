@@ -170,7 +170,9 @@ async def test_filesystem_read_tool_executes_for_workspace_file(tmp_path: Path):
     provider = FakeProvider(responses)
     tools = ToolManager()
     tools.register_bundle("filesystem")
-    runner = AgentRunner(config=config, provider=provider, tools=tools, min_call_interval=0)
+    runner = AgentRunner(
+        config=config, provider=provider, tools=tools, min_call_interval=0
+    )
 
     events = await _collect(runner, "Read notes")
 
@@ -191,7 +193,9 @@ async def test_filesystem_read_blocks_outside_workspace(tmp_path: Path):
     provider = FakeProvider(responses)
     tools = ToolManager()
     tools.register_bundle("filesystem")
-    runner = AgentRunner(config=config, provider=provider, tools=tools, min_call_interval=0)
+    runner = AgentRunner(
+        config=config, provider=provider, tools=tools, min_call_interval=0
+    )
 
     events = await _collect(runner, "Read outside")
 
@@ -214,7 +218,9 @@ async def test_write_todos_creates_plan_file(tmp_path: Path):
     provider = FakeProvider(responses)
     tools = ToolManager()
     tools.register_bundle("planning")
-    runner = AgentRunner(config=config, provider=provider, tools=tools, min_call_interval=0)
+    runner = AgentRunner(
+        config=config, provider=provider, tools=tools, min_call_interval=0
+    )
 
     events = await _collect(runner, "Create a plan")
 
@@ -244,7 +250,9 @@ async def test_read_todos_returns_saved_plan(tmp_path: Path):
     provider = FakeProvider(responses)
     tools = ToolManager()
     tools.register_bundle("planning")
-    runner = AgentRunner(config=config, provider=provider, tools=tools, min_call_interval=0)
+    runner = AgentRunner(
+        config=config, provider=provider, tools=tools, min_call_interval=0
+    )
 
     events = await _collect(runner, "Read the current plan")
 
@@ -270,7 +278,9 @@ async def test_read_file_alias_supports_offset_and_limit(tmp_path: Path):
     provider = FakeProvider(responses)
     tools = ToolManager()
     tools.register_bundle("filesystem")
-    runner = AgentRunner(config=config, provider=provider, tools=tools, min_call_interval=0)
+    runner = AgentRunner(
+        config=config, provider=provider, tools=tools, min_call_interval=0
+    )
 
     events = await _collect(runner, "Read a slice")
 
@@ -285,7 +295,9 @@ async def test_edit_file_glob_and_grep_tools_work_together(tmp_path: Path):
     src.mkdir()
     target = src / "launch.txt"
     target.write_text("ContextClaw launch draft\n", encoding="utf-8")
-    (src / "notes.md").write_text("ContextGraph complements ContextClaw\n", encoding="utf-8")
+    (src / "notes.md").write_text(
+        "ContextGraph complements ContextClaw\n", encoding="utf-8"
+    )
     responses = [
         LLMResponse(
             content="",
@@ -317,7 +329,9 @@ async def test_edit_file_glob_and_grep_tools_work_together(tmp_path: Path):
     provider = FakeProvider(responses)
     tools = ToolManager()
     tools.register_bundle("filesystem")
-    runner = AgentRunner(config=config, provider=provider, tools=tools, min_call_interval=0)
+    runner = AgentRunner(
+        config=config, provider=provider, tools=tools, min_call_interval=0
+    )
 
     events = await _collect(runner, "Edit and search files")
 
@@ -366,16 +380,26 @@ async def test_execute_alias_uses_shell_policy_name(tmp_path: Path):
     config = _make_config(tmp_path)
     provider = FakeProvider(responses)
     policy = MagicMock()
-    policy.check_tool.side_effect = lambda name: "block" if name == "shell_execute" else "allow"
+    policy.check_tool.side_effect = lambda name: (
+        "block" if name == "shell_execute" else "allow"
+    )
     tools = ToolManager()
     tools.register_bundle("shell")
 
-    runner = AgentRunner(config=config, provider=provider, tools=tools, policy=policy, min_call_interval=0)
+    runner = AgentRunner(
+        config=config,
+        provider=provider,
+        tools=tools,
+        policy=policy,
+        min_call_interval=0,
+    )
     events = await _collect(runner, "Run a command")
 
     result = next(e for e in events if e.type == "tool_result")
     assert "blocked by policy" in result.data["result"]
-    assert any(call.args[0] == "shell_execute" for call in policy.check_tool.call_args_list)
+    assert any(
+        call.args[0] == "shell_execute" for call in policy.check_tool.call_args_list
+    )
 
 
 @pytest.mark.asyncio
@@ -603,7 +627,10 @@ async def test_task_tool_delegates_to_subagent(tmp_path: Path):
     parent_tc = ToolCall(
         id="tc_task",
         name="task",
-        arguments={"subagent": "research-sub", "prompt": "Summarize the delegated work."},
+        arguments={
+            "subagent": "research-sub",
+            "prompt": "Summarize the delegated work.",
+        },
     )
     parent_provider = FakeProvider(
         [

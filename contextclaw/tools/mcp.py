@@ -110,8 +110,14 @@ class MCPServerClient:
         payload = {"jsonrpc": "2.0", "method": method, "params": params}
         await self._write_message(payload)
 
-    async def _send_request(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
-        if self.process is None or self.process.stdin is None or self.process.stdout is None:
+    async def _send_request(
+        self, method: str, params: dict[str, Any]
+    ) -> dict[str, Any]:
+        if (
+            self.process is None
+            or self.process.stdin is None
+            or self.process.stdout is None
+        ):
             raise RuntimeError(f"MCP server '{self.config.name}' is not running")
 
         async with self._io_lock:
@@ -159,7 +165,9 @@ class MCPServerClient:
             try:
                 message = json.loads(line)
             except json.JSONDecodeError:
-                logger.debug("Ignoring non-JSON MCP stdout from %s: %s", self.config.name, line)
+                logger.debug(
+                    "Ignoring non-JSON MCP stdout from %s: %s", self.config.name, line
+                )
                 continue
             if isinstance(message, dict):
                 return message

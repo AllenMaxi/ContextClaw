@@ -120,7 +120,9 @@ class ToolManager:
                 self.register(
                     ToolDefinition(
                         name=local_name,
-                        description=prefix + description if description else prefix + remote_name,
+                        description=prefix + description
+                        if description
+                        else prefix + remote_name,
                         parameters=params if isinstance(params, dict) else {},
                     )
                 )

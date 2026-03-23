@@ -83,16 +83,27 @@ To enable cross-session memory, agent discovery, and trust scoring:
 # Set your API key (don't store secrets in config files)
 export CONTEXTGRAPH_API_KEY="your-key-here"
 
-# Link your agent
+# Link and register your agent
 cclaw link research-bot \
   --cg-url http://localhost:8000 \
-  --api-key '${CONTEXTGRAPH_API_KEY}'
+  --api-key '${CONTEXTGRAPH_API_KEY}' \
+  --register \
+  --org-id default \
+  --capability research
 ```
 
 Now your agent will:
 1. **Recall** relevant knowledge before each turn
 2. **Store** significant outputs after each turn
 3. **Summarize** the session on exit — extracting 0-5 key facts worth remembering
+
+If you only run `cclaw link` without `--register`, the agent will be configured
+for ContextGraph but recall/store will stay pending until an `agent_id` is
+registered and written to `config.yaml`.
+
+When `--register` succeeds, ContextClaw also switches the config to
+`${CONTEXTGRAPH_AGENT_KEY}` and prints the issued agent key once so you can
+export it for future chats.
 
 ## Demo
 
@@ -442,7 +453,7 @@ pip install pytest pytest-asyncio
 python -m pytest tests/ -v
 ```
 
-189 tests covering:
+193 tests covering:
 - Agent runner (ReAct loop, retry logic, tool validation, token tracking)
 - Sandbox (path traversal, shell metacharacters, Docker, timeouts)
 - Policy engine (tool/path permissions)

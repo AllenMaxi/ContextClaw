@@ -391,3 +391,15 @@ def test_from_yaml_falls_back_to_contextgraph_api_key_env(tmp_path: Path, monkey
     )
     config = AgentConfig.from_yaml(config_file)
     assert config.cg_api_key == "env_fallback_key"
+
+
+def test_from_yaml_prefers_contextgraph_agent_key_env(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("CONTEXTGRAPH_AGENT_KEY", "agent_key_value")
+    monkeypatch.setenv("CONTEXTGRAPH_API_KEY", "registration_key_value")
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "name: env-agent\ncg_url: http://cg.local\n",
+        encoding="utf-8",
+    )
+    config = AgentConfig.from_yaml(config_file)
+    assert config.cg_api_key == "agent_key_value"
