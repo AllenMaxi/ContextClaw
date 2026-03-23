@@ -1,0 +1,9 @@
+id: docs-writer
+version: 1.0.0
+display_name: Docs Writer
+description: Documentation workflow for turning implementation details into setup guides, how-tos, and release notes.
+stability: stable
+tags: [docs, writing]
+entrypoint: SKILL.md
+requires_connectors: []
+asset_dirs: [templates]

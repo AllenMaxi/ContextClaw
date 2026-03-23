@@ -1,0 +1,8 @@
+id: research
+version: 1.0.0
+display_name: Research Operator
+description: Structured web and file research workflow for finding, comparing, and summarizing evidence.
+stability: stable
+tags: [research, analysis]
+entrypoint: SKILL.md
+requires_connectors: []

@@ -1,0 +1,16 @@
+id: github
+version: 1.0.0
+display_name: GitHub Connector
+description: First-party MCP connector metadata for GitHub workflows and repository automation.
+stability: preview
+tags: [mcp, git, collaboration]
+type: mcp
+mcp:
+  name: github
+  command: [python3, -m, contextclaw.catalog_mcp_server, github]
+required_env:
+  GITHUB_TOKEN: GitHub personal access token for authenticated API and MCP operations.
+policy_defaults:
+  require_confirm: [mcp__github__*]
+  blocked: []
+tools_exposed: [mcp__github__status]

@@ -1,0 +1,9 @@
+id: memory-governor
+version: 1.0.0
+display_name: Memory Governor
+description: Workflow for deciding what should be stored, recalled, or left ephemeral across agent sessions.
+stability: preview
+tags: [memory, governance]
+entrypoint: SKILL.md
+requires_connectors: []
+asset_dirs: [references]

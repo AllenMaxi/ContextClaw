@@ -226,6 +226,46 @@ def test_load_skills_from_directory(tmp_path: Path):
     assert [label for label, _ in skills] == ["plan.md", "research/compare.md"]
 
 
+def test_load_skills_uses_only_packaged_skill_entrypoint(tmp_path: Path):
+    skills_dir = tmp_path / "skills"
+    package_dir = skills_dir / "packages" / "catalog-skill"
+    package_dir.mkdir(parents=True)
+    (package_dir / "skill.yaml").write_text(
+        "id: catalog-skill\n"
+        "version: 1.0.0\n"
+        "display_name: Catalog Skill\n"
+        "description: Packaged skill.\n"
+        "stability: stable\n"
+        "tags: [catalog]\n"
+        "entrypoint: SKILL.md\n"
+        "requires_connectors: []\n",
+        encoding="utf-8",
+    )
+    (package_dir / "SKILL.md").write_text(
+        "Use the packaged entrypoint.", encoding="utf-8"
+    )
+    references_dir = package_dir / "references"
+    references_dir.mkdir()
+    (references_dir / "extra.md").write_text(
+        "This markdown should stay off the prompt.",
+        encoding="utf-8",
+    )
+    (skills_dir / "loose.md").write_text(
+        "Legacy markdown still loads.", encoding="utf-8"
+    )
+
+    skills = load_skills(skills_dir)
+
+    assert [label for label, _ in skills] == [
+        "packages/catalog-skill/SKILL.md",
+        "loose.md",
+    ]
+    contents = "\n".join(content for _, content in skills)
+    assert "Use the packaged entrypoint." in contents
+    assert "Legacy markdown still loads." in contents
+    assert "This markdown should stay off the prompt." not in contents
+
+
 def test_render_skills_prompt(tmp_path: Path):
     skill_file = tmp_path / "skill.md"
     skill_file.write_text("Always verify with tests.", encoding="utf-8")

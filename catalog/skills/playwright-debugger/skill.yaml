@@ -1,0 +1,8 @@
+id: playwright-debugger
+version: 1.0.0
+display_name: Playwright Debugger
+description: Workflow for browser-based reproduction, automation checks, and UI-level debugging powered by Playwright.
+stability: preview
+tags: [playwright, browser, qa]
+entrypoint: SKILL.md
+requires_connectors: [playwright]

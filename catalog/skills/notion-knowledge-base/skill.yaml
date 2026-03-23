@@ -1,0 +1,8 @@
+id: notion-knowledge-base
+version: 1.0.0
+display_name: Notion Knowledge Base
+description: Workflow for capturing technical decisions and reusable knowledge into structured Notion pages.
+stability: preview
+tags: [notion, knowledge]
+entrypoint: SKILL.md
+requires_connectors: [notion]

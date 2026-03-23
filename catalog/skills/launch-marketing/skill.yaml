@@ -1,0 +1,9 @@
+id: launch-marketing
+version: 1.0.0
+display_name: Launch Marketing
+description: Product marketing workflow for feature launches, short-form demos, and social promotion.
+stability: preview
+tags: [marketing, launch]
+entrypoint: SKILL.md
+requires_connectors: []
+asset_dirs: [templates]

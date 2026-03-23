@@ -1,0 +1,8 @@
+id: qa-triage
+version: 1.0.0
+display_name: QA Triage Operator
+description: Reproduction-first workflow for investigating failures, isolating causes, and turning them into next actions.
+stability: stable
+tags: [qa, debugging]
+entrypoint: SKILL.md
+requires_connectors: []

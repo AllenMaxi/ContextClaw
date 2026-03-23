@@ -1,0 +1,8 @@
+id: coding
+version: 1.0.0
+display_name: Coding Operator
+description: Implementation workflow for making scoped code changes with verification and clear summaries.
+stability: stable
+tags: [coding, implementation]
+entrypoint: SKILL.md
+requires_connectors: []

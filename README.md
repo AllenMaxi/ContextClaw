@@ -48,17 +48,19 @@ Then adds what none of them have: **cross-session memory** via ContextGraph.
 
 ContextClaw now covers the core "deep agent" runtime path well: built-in and
 MCP-backed tools, policy-gated execution, task delegation to sub-agents,
-session checkpoints, and ContextGraph-powered memory.
+session checkpoints, ContextGraph-powered memory, and an initial first-party
+catalog for connectors and packaged skills.
 
-It is not yet at full parity with every connector or packaged integration in
-the wider Claw family. The main remaining gap is ecosystem breadth rather than
-runtime depth: a broader first-party connector or MCP catalog and a larger set
-of reusable packaged skills.
+It is still not at full parity with every connector or packaged integration in
+the wider Claw family. The remaining gap is breadth rather than runtime depth:
+more first-party connectors, richer packaged skills, and a larger turnkey
+ecosystem on top of the runtime that already works.
 
 The short version:
 
 - The runtime pieces are in place and working.
-- The biggest remaining investment is more turnkey connectors and skills.
+- An initial curated connector and skill catalog now ships with ContextClaw.
+- The biggest remaining investment is expanding that catalog over time.
 
 ## Quick Start
 
@@ -69,11 +71,20 @@ pip install -e ".[all]"
 # Create an agent
 cclaw create research-bot --template research --provider claude
 
+# Browse the bundled catalog
+cclaw connectors list
+cclaw skills list
+
+# Install a connector + packaged skill
+cclaw connectors install research-bot github
+cclaw skills install research-bot github-maintainer
+
 # Start chatting
 cclaw chat research-bot
 ```
 
-That's it. Three commands to a working agent with sandbox isolation, tool access, and built-in planning tools.
+That's it. A few commands gets you to a working agent with sandbox isolation,
+tool access, packaged skills, and generated MCP/policy state.
 
 ### Link to ContextGraph (optional)
 
@@ -264,11 +275,50 @@ deep-agent-style aliases (`read_file`, `write_file`, `ls`, `edit_file`, `glob`,
 `grep`, `execute`, `read_todos`) map cleanly onto the same ContextClaw runtime,
 so migrating prompts is low-friction.
 
+### First-Party Catalog
+
+ContextClaw now ships a bundled first-party catalog with curated connectors and
+packaged skills. The launch catalog includes:
+
+- Connectors: `filesystem`, `web`, `shell`, `github`, `playwright`, `notion`, `slack`, `contextgraph-mcp`
+- Skills: `research`, `coding`, `code-review`, `qa-triage`, `docs-writer`, `launch-marketing`, `memory-governor`, `github-maintainer`, `notion-knowledge-base`, `playwright-debugger`
+
+Catalog state is agent-local and reproducible:
+
+```text
+my-agent/
+├── .contextclaw/
+│   ├── catalog.yaml
+│   ├── catalog.lock.json
+│   └── generated/
+│       ├── mcp_servers.json
+│       └── policy.yaml
+└── skills/
+    └── packages/
+        └── <skill-id>/
+```
+
+Install and sync from the CLI:
+
+```bash
+cclaw connectors install my-agent github
+cclaw skills install my-agent github-maintainer
+cclaw connectors sync my-agent
+cclaw status my-agent
+```
+
+The generated policy layer is restrictive only: it can require confirmation or
+block tools, but it never auto-approves new capabilities.
+
 ### MCP Registry and Invocation
 
 Agents can auto-discover an `mcp_servers.json` file in their workspace and
-start MCP servers on chat startup. Each discovered MCP tool is registered as a
-first-class model tool using the name format:
+start MCP servers on chat startup. The first-party catalog can also generate an
+MCP registry at `.contextclaw/generated/mcp_servers.json`. Manual registries
+keep precedence over generated ones when the same server name appears twice.
+
+Each discovered MCP tool is registered as a first-class model tool using the
+name format:
 
 ```text
 mcp__<server_name>__<tool_name>
@@ -357,6 +407,21 @@ Each skill file is appended to the system prompt as an extra capability block,
 making it easy to keep role instructions modular instead of overloading one
 large `SOUL.md`.
 
+Packaged skills add a lightweight manifest:
+
+```text
+skills/
+└── packages/
+    └── github-maintainer/
+        ├── skill.yaml
+        ├── SKILL.md
+        └── templates/...
+```
+
+When a directory contains `skill.yaml`, only that package's `SKILL.md` is
+auto-injected into the prompt. Reference and template markdown stays on disk
+for agents and operators to use without bloating the system prompt.
+
 ### Structured Logging
 
 JSON-lines output for production, human-readable for development:
@@ -418,6 +483,16 @@ cclaw start <name>
 cclaw chat <name>
 cclaw status <name>
 cclaw link <name> --cg-url <url> --api-key <key>
+cclaw connectors list
+cclaw connectors info <connector-id>
+cclaw connectors install <name> <connector-id>
+cclaw connectors remove <name> <connector-id>
+cclaw connectors sync <name>
+cclaw skills list
+cclaw skills info <skill-id>
+cclaw skills install <name> <skill-id> [--no-deps]
+cclaw skills remove <name> <skill-id>
+cclaw skills sync <name>
 ```
 
 Global flags:
@@ -453,45 +528,52 @@ pip install pytest pytest-asyncio
 python -m pytest tests/ -v
 ```
 
-193 tests covering:
+206 tests covering:
 - Agent runner (ReAct loop, retry logic, tool validation, token tracking)
 - Sandbox (path traversal, shell metacharacters, Docker, timeouts)
 - Policy engine (tool/path permissions)
 - Knowledge bridge (recall, store, summarization, JSON parsing)
 - Config (env var resolution, YAML parsing)
+- Catalog engine (connector manifests, packaged skills, generated state)
 - Integration (full lifecycle, multi-turn, concurrent access)
 
 ## Project Structure
 
-```
-contextclaw/
-├── chat/
-│   ├── server.py        # HTTP + SSE chat server (threaded)
-│   └── session.py       # Thread-safe conversation history
-├── config/
-│   ├── agent_config.py  # YAML config with env var resolution
-│   ├── skills.py        # Markdown skill loading and prompt rendering
-│   └── soul.py          # SOUL.md parser
-├── runtime.py           # Shared runtime builders for providers/tools/policy
-├── knowledge/
-│   └── bridge.py        # ContextGraph integration
-├── providers/
-│   ├── protocol.py      # LLMProvider protocol
-│   ├── claude.py        # Anthropic provider
-│   ├── openai.py        # OpenAI provider
-│   └── ollama.py        # Ollama provider
-├── sandbox/
-│   ├── protocol.py      # Sandbox protocol
-│   ├── process.py       # Process sandbox with path protection
-│   ├── docker.py        # Docker sandbox with resource limits
-│   └── policy.py        # YAML policy engine
-├── tools/
-│   ├── manager.py       # Tool registry
-│   ├── bundles.py       # Pre-built tool bundles
-│   └── mcp.py           # MCP stdio client and registry loading
-├── runner.py            # AgentRunner (ReAct loop)
-├── logging_config.py    # Structured logging setup
-└── cli.py               # CLI entry point
+```text
+ContextClaw/
+├── catalog/                 # First-party connector and skill catalog
+├── tests/                   # Runtime, catalog, and integration coverage
+└── contextclaw/
+    ├── chat/
+    │   ├── server.py        # HTTP + SSE chat server (threaded)
+    │   └── session.py       # Thread-safe conversation history
+    ├── catalog_engine.py    # Catalog manifests, lockfile sync, generated state
+    ├── catalog_mcp_server.py # Built-in MCP status server for first-party connectors
+    ├── config/
+    │   ├── agent_config.py  # YAML config with env var resolution
+    │   ├── skills.py        # Markdown skill loading and prompt rendering
+    │   └── soul.py          # SOUL.md parser
+    ├── runtime.py           # Shared runtime builders for providers/tools/policy
+    ├── knowledge/
+    │   └── bridge.py        # ContextGraph integration
+    ├── providers/
+    │   ├── protocol.py      # LLMProvider protocol
+    │   ├── claude.py        # Anthropic provider
+    │   ├── openai.py        # OpenAI provider
+    │   └── ollama.py        # Ollama provider
+    ├── sandbox/
+    │   ├── protocol.py      # Sandbox protocol
+    │   ├── process.py       # Process sandbox with path protection
+    │   ├── docker.py        # Docker sandbox with resource limits
+    │   └── policy.py        # YAML policy engine
+    ├── tools/
+    │   ├── manager.py       # Tool registry
+    │   ├── bundles.py       # Pre-built tool bundles
+    │   └── mcp.py           # MCP stdio client and registry loading
+    ├── runner.py            # AgentRunner (ReAct loop)
+    ├── simple_yaml.py       # Minimal YAML subset for config/catalog parsing
+    ├── logging_config.py    # Structured logging setup
+    └── cli.py               # CLI entry point
 ```
 
 ## Security

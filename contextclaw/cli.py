@@ -7,6 +7,24 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from .catalog_engine import (
+    catalog_lock_path,
+    catalog_state_path,
+    catalog_sync_required,
+    generated_mcp_path,
+    generated_policy_path,
+    installed_connectors_from_lock,
+    installed_skills_from_lock,
+    load_connector_specs,
+    load_skill_specs,
+    missing_connector_dependencies_from_lock,
+    missing_env_from_lock,
+    read_catalog_state,
+    sync_agent_catalog,
+    validate_connector_prerequisites,
+    write_catalog_state,
+)
+
 AGENTS_DIR = Path.home() / ".contextclaw" / "agents"
 
 
@@ -23,6 +41,68 @@ def _rewrite_config(
     for key, value in updates.items():
         filtered.append(f"{key}: {value}")
     return filtered
+
+
+def _require_agent_workspace(name: str) -> Path:
+    workspace = AGENTS_DIR / name
+    if not workspace.exists():
+        print(f"Agent '{name}' not found.", file=sys.stderr)
+        sys.exit(1)
+    return workspace
+
+
+def _format_items(items: list[str]) -> str:
+    return ", ".join(items) if items else "none"
+
+
+def _format_mapping(mapping: dict[str, list[str]]) -> str:
+    if not mapping:
+        return "none"
+    parts = []
+    for key in sorted(mapping):
+        values = ", ".join(mapping[key])
+        parts.append(f"{key} ({values})")
+    return "; ".join(parts)
+
+
+def _status_from_lock(
+    workspace: Path,
+) -> tuple[list[str], list[str], dict[str, list[str]]]:
+    return (
+        installed_connectors_from_lock(workspace),
+        installed_skills_from_lock(workspace),
+        missing_env_from_lock(workspace),
+    )
+
+
+def _print_connector_summary(connector_id: str, missing_env: list[str]) -> None:
+    if missing_env:
+        joined = ", ".join(missing_env)
+        print(f"Missing env vars for '{connector_id}': {joined}")
+
+
+def _print_sync_summary(name: str, workspace: Path) -> None:
+    connectors, skills, missing_env = _status_from_lock(workspace)
+    print(f"Synchronized catalog for '{name}'.")
+    print(f"Installed connectors: {_format_items(connectors)}")
+    print(f"Installed skills: {_format_items(skills)}")
+    print(f"Missing env: {_format_mapping(missing_env)}")
+    print(
+        f"Generated MCP Registry: {generated_mcp_path(workspace) if generated_mcp_path(workspace).exists() else 'none'}"
+    )
+    print(
+        f"Generated Policy: {generated_policy_path(workspace) if generated_policy_path(workspace).exists() else 'none'}"
+    )
+
+
+def _load_catalog_or_exit(kind: str) -> dict[str, Any]:
+    try:
+        if kind == "connectors":
+            return load_connector_specs()
+        return load_skill_specs()
+    except ValueError as exc:
+        print(f"Catalog error: {exc}", file=sys.stderr)
+        sys.exit(1)
 
 
 def cmd_create(args: argparse.Namespace) -> None:
@@ -178,24 +258,50 @@ async def _cli_tool_approver(tool_call: Any) -> bool:
 
 def cmd_status(args: argparse.Namespace) -> None:
     """Check agent status."""
-    workspace = AGENTS_DIR / args.name
-    if not workspace.exists():
-        print(f"Agent '{args.name}' not found.", file=sys.stderr)
-        sys.exit(1)
+    workspace = _require_agent_workspace(args.name)
 
     from .config import AgentConfig
 
     config = AgentConfig.from_dir(workspace)
+    desired_state = read_catalog_state(workspace)
+    sync_required = catalog_sync_required(workspace)
+    installed_connectors, installed_skills, missing_env = _status_from_lock(workspace)
+    generated_mcp = generated_mcp_path(workspace)
+    generated_policy = generated_policy_path(workspace)
 
     print(f"Agent: {config.name}")
     print(f"Workspace: {config.workspace}")
     print(f"Provider: {config.provider}")
     print(f"Sandbox: {config.sandbox_type}")
     print(f"Tools: {', '.join(config.tools) if config.tools else 'none'}")
+    print(f"Desired Connectors: {_format_items(desired_state.connectors)}")
+    print(f"Desired Skills: {_format_items(desired_state.skills)}")
+    print(f"Installed Connectors: {_format_items(installed_connectors)}")
+    print(f"Installed Skills: {_format_items(installed_skills)}")
+    print(
+        f"Catalog State: {catalog_state_path(workspace) if catalog_state_path(workspace).exists() else 'none'}"
+    )
+    print(
+        f"Catalog Lock: {catalog_lock_path(workspace) if catalog_lock_path(workspace).exists() else 'none'}"
+    )
+    if catalog_state_path(workspace).exists():
+        print(f"Catalog Sync: {'required' if sync_required else 'up to date'}")
+    else:
+        print("Catalog Sync: not initialized")
+    print(f"Missing Env: {_format_mapping(missing_env)}")
+    print(
+        f"Missing Connector Deps: {_format_mapping(missing_connector_dependencies_from_lock(workspace))}"
+    )
     print(f"ContextGraph: {'linked' if config.cg_url else 'not linked'}")
     print(f"Skills: {config.skills_path if config.skills_path else 'none'}")
     print(
         f"MCP Registry: {config.mcp_servers_path if config.mcp_servers_path else 'none'}"
+    )
+    print(
+        f"Generated MCP Registry: {generated_mcp if generated_mcp.exists() else 'none'}"
+    )
+    print(
+        f"Generated Policy: {generated_policy if generated_policy.exists() else 'none'}"
     )
     print(f"Subagents: {config.subagents_path if config.subagents_path else 'none'}")
     print(f"Checkpoint: {config.checkpoint_path if config.checkpoint_path else 'none'}")
@@ -205,6 +311,194 @@ def cmd_status(args: argparse.Namespace) -> None:
         print(
             "Agent ID: none (run `cclaw link ... --register` to enable ContextGraph recall/store)"
         )
+
+
+def cmd_connectors_list(args: argparse.Namespace) -> None:
+    specs = _load_catalog_or_exit("connectors")
+    for connector_id in sorted(specs):
+        spec = specs[connector_id]
+        tags = f" [{', '.join(spec.tags)}]" if spec.tags else ""
+        print(f"{spec.id}: {spec.display_name} ({spec.type}, {spec.stability}){tags}")
+        print(f"  {spec.description}")
+
+
+def cmd_connectors_info(args: argparse.Namespace) -> None:
+    specs = _load_catalog_or_exit("connectors")
+    spec = specs.get(args.connector_id)
+    if spec is None:
+        print(f"Unknown connector '{args.connector_id}'.", file=sys.stderr)
+        sys.exit(1)
+    print(f"ID: {spec.id}")
+    print(f"Name: {spec.display_name}")
+    print(f"Version: {spec.version}")
+    print(f"Type: {spec.type}")
+    print(f"Stability: {spec.stability}")
+    print(f"Description: {spec.description}")
+    print(f"Tags: {_format_items(spec.tags)}")
+    print(f"Bundles: {_format_items(spec.bundles)}")
+    print(f"Tools Exposed: {_format_items(spec.tools_exposed)}")
+    print(f"Required Env: {_format_items(sorted(spec.required_env))}")
+    print(f"Prerequisites: {_format_items(sorted(spec.prerequisites))}")
+    if spec.mcp is not None:
+        print(f"MCP Server: {spec.mcp.name}")
+        print(f"MCP Command: {' '.join(spec.mcp.command)}")
+
+
+def cmd_connectors_install(args: argparse.Namespace) -> None:
+    workspace = _require_agent_workspace(args.name)
+    connector_specs = _load_catalog_or_exit("connectors")
+    spec = connector_specs.get(args.connector_id)
+    if spec is None:
+        print(f"Unknown connector '{args.connector_id}'.", file=sys.stderr)
+        sys.exit(1)
+
+    state = read_catalog_state(workspace)
+    already_installed = spec.id in state.connectors
+    if not already_installed:
+        missing_prereq = validate_connector_prerequisites([spec.id], connector_specs)
+        if missing_prereq.get(spec.id):
+            joined = ", ".join(missing_prereq[spec.id])
+            print(
+                f"Cannot install connector '{spec.id}': missing prerequisites: {joined}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        state.connectors.append(spec.id)
+    write_catalog_state(workspace, state)
+
+    try:
+        result = sync_agent_catalog(workspace)
+    except ValueError as exc:
+        print(f"Catalog error: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    if already_installed:
+        print(f"Connector '{spec.id}' is already installed in '{args.name}'.")
+    else:
+        print(f"Installed connector '{spec.id}' into '{args.name}'.")
+    _print_connector_summary(spec.id, result.missing_env.get(spec.id, []))
+    _print_sync_summary(args.name, workspace)
+
+
+def cmd_connectors_remove(args: argparse.Namespace) -> None:
+    workspace = _require_agent_workspace(args.name)
+    connector_specs = _load_catalog_or_exit("connectors")
+    if args.connector_id not in connector_specs:
+        print(f"Unknown connector '{args.connector_id}'.", file=sys.stderr)
+        sys.exit(1)
+
+    state = read_catalog_state(workspace)
+    state.connectors = [
+        connector_id
+        for connector_id in state.connectors
+        if connector_id != args.connector_id
+    ]
+    write_catalog_state(workspace, state)
+    sync_agent_catalog(workspace)
+    print(f"Removed connector '{args.connector_id}' from '{args.name}'.")
+    _print_sync_summary(args.name, workspace)
+
+
+def cmd_connectors_sync(args: argparse.Namespace) -> None:
+    workspace = _require_agent_workspace(args.name)
+    sync_agent_catalog(workspace)
+    _print_sync_summary(args.name, workspace)
+
+
+def cmd_skills_list(args: argparse.Namespace) -> None:
+    specs = _load_catalog_or_exit("skills")
+    for skill_id in sorted(specs):
+        spec = specs[skill_id]
+        tags = f" [{', '.join(spec.tags)}]" if spec.tags else ""
+        print(f"{spec.id}: {spec.display_name} ({spec.stability}){tags}")
+        print(f"  {spec.description}")
+
+
+def cmd_skills_info(args: argparse.Namespace) -> None:
+    specs = _load_catalog_or_exit("skills")
+    spec = specs.get(args.skill_id)
+    if spec is None:
+        print(f"Unknown skill '{args.skill_id}'.", file=sys.stderr)
+        sys.exit(1)
+    print(f"ID: {spec.id}")
+    print(f"Name: {spec.display_name}")
+    print(f"Version: {spec.version}")
+    print(f"Stability: {spec.stability}")
+    print(f"Description: {spec.description}")
+    print(f"Tags: {_format_items(spec.tags)}")
+    print(f"Requires Connectors: {_format_items(spec.requires_connectors)}")
+    print(f"Asset Dirs: {_format_items(spec.asset_dirs)}")
+    print(f"Entrypoint: {spec.entrypoint}")
+
+
+def cmd_skills_install(args: argparse.Namespace) -> None:
+    workspace = _require_agent_workspace(args.name)
+    connector_specs = _load_catalog_or_exit("connectors")
+    skill_specs = _load_catalog_or_exit("skills")
+    spec = skill_specs.get(args.skill_id)
+    if spec is None:
+        print(f"Unknown skill '{args.skill_id}'.", file=sys.stderr)
+        sys.exit(1)
+
+    state = read_catalog_state(workspace)
+    auto_installed: list[str] = []
+    if not args.no_deps:
+        for connector_id in spec.requires_connectors:
+            if connector_id not in state.connectors:
+                auto_installed.append(connector_id)
+                state.connectors.append(connector_id)
+        missing_prereq = validate_connector_prerequisites(
+            auto_installed, connector_specs
+        )
+        if missing_prereq:
+            problems = []
+            for connector_id, commands in sorted(missing_prereq.items()):
+                problems.append(f"{connector_id} ({', '.join(commands)})")
+            print(
+                "Cannot install skill because required connectors are missing prerequisites: "
+                + "; ".join(problems),
+                file=sys.stderr,
+            )
+            sys.exit(1)
+    if spec.id not in state.skills:
+        state.skills.append(spec.id)
+    write_catalog_state(workspace, state)
+
+    try:
+        result = sync_agent_catalog(workspace)
+    except ValueError as exc:
+        print(f"Catalog error: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"Installed skill '{spec.id}' into '{args.name}'.")
+    if auto_installed:
+        print(f"Auto-installed connectors: {', '.join(sorted(auto_installed))}")
+    if args.no_deps and result.missing_connector_dependencies.get(spec.id):
+        print(
+            f"Missing connector dependencies for '{spec.id}': "
+            + ", ".join(result.missing_connector_dependencies[spec.id])
+        )
+    _print_sync_summary(args.name, workspace)
+
+
+def cmd_skills_remove(args: argparse.Namespace) -> None:
+    workspace = _require_agent_workspace(args.name)
+    skill_specs = _load_catalog_or_exit("skills")
+    if args.skill_id not in skill_specs:
+        print(f"Unknown skill '{args.skill_id}'.", file=sys.stderr)
+        sys.exit(1)
+    state = read_catalog_state(workspace)
+    state.skills = [skill_id for skill_id in state.skills if skill_id != args.skill_id]
+    write_catalog_state(workspace, state)
+    sync_agent_catalog(workspace)
+    print(f"Removed skill '{args.skill_id}' from '{args.name}'.")
+    _print_sync_summary(args.name, workspace)
+
+
+def cmd_skills_sync(args: argparse.Namespace) -> None:
+    workspace = _require_agent_workspace(args.name)
+    sync_agent_catalog(workspace)
+    _print_sync_summary(args.name, workspace)
 
 
 def cmd_link(args: argparse.Namespace) -> None:
@@ -295,18 +589,22 @@ def main() -> None:
     p.add_argument(
         "--provider", default="claude", choices=["claude", "openai", "ollama"]
     )
+    p.set_defaults(func=cmd_create)
 
     # start
     p = sub.add_parser("start", help="Start the agent runtime")
     p.add_argument("name")
+    p.set_defaults(func=cmd_start)
 
     # chat
     p = sub.add_parser("chat", help="Interactive chat with an agent")
     p.add_argument("name")
+    p.set_defaults(func=cmd_chat)
 
     # status
     p = sub.add_parser("status", help="Check agent status")
     p.add_argument("name")
+    p.set_defaults(func=cmd_status)
 
     # link
     p = sub.add_parser("link", help="Link agent to ContextGraph")
@@ -329,6 +627,76 @@ def main() -> None:
         default=[],
         help="Capability to register with ContextGraph (repeatable)",
     )
+    p.set_defaults(func=cmd_link)
+
+    connectors = sub.add_parser(
+        "connectors", help="Browse and manage first-party connector catalog entries"
+    )
+    connectors_sub = connectors.add_subparsers(dest="connectors_command", required=True)
+
+    p = connectors_sub.add_parser("list", help="List available connectors")
+    p.set_defaults(func=cmd_connectors_list)
+
+    p = connectors_sub.add_parser("info", help="Show connector details")
+    p.add_argument("connector_id")
+    p.set_defaults(func=cmd_connectors_info)
+
+    p = connectors_sub.add_parser(
+        "install", help="Install a connector into an agent workspace"
+    )
+    p.add_argument("name")
+    p.add_argument("connector_id")
+    p.set_defaults(func=cmd_connectors_install)
+
+    p = connectors_sub.add_parser(
+        "remove", help="Remove a connector from an agent workspace"
+    )
+    p.add_argument("name")
+    p.add_argument("connector_id")
+    p.set_defaults(func=cmd_connectors_remove)
+
+    p = connectors_sub.add_parser(
+        "sync", help="Resolve connector state and regenerate agent artifacts"
+    )
+    p.add_argument("name")
+    p.set_defaults(func=cmd_connectors_sync)
+
+    skills = sub.add_parser(
+        "skills", help="Browse and manage first-party packaged skills"
+    )
+    skills_sub = skills.add_subparsers(dest="skills_command", required=True)
+
+    p = skills_sub.add_parser("list", help="List available packaged skills")
+    p.set_defaults(func=cmd_skills_list)
+
+    p = skills_sub.add_parser("info", help="Show packaged skill details")
+    p.add_argument("skill_id")
+    p.set_defaults(func=cmd_skills_info)
+
+    p = skills_sub.add_parser(
+        "install", help="Install a packaged skill into an agent workspace"
+    )
+    p.add_argument("name")
+    p.add_argument("skill_id")
+    p.add_argument(
+        "--no-deps",
+        action="store_true",
+        help="Do not auto-install required first-party connectors",
+    )
+    p.set_defaults(func=cmd_skills_install)
+
+    p = skills_sub.add_parser(
+        "remove", help="Remove a packaged skill from an agent workspace"
+    )
+    p.add_argument("name")
+    p.add_argument("skill_id")
+    p.set_defaults(func=cmd_skills_remove)
+
+    p = skills_sub.add_parser(
+        "sync", help="Resolve packaged skill state and regenerate agent artifacts"
+    )
+    p.add_argument("name")
+    p.set_defaults(func=cmd_skills_sync)
 
     # Global flags
     parser.add_argument(
@@ -340,15 +708,7 @@ def main() -> None:
 
     args = parser.parse_args()
     setup_logging(level=args.log_level, structured=args.json_logs)
-
-    commands = {
-        "create": cmd_create,
-        "start": cmd_start,
-        "chat": cmd_chat,
-        "status": cmd_status,
-        "link": cmd_link,
-    }
-    commands[args.command](args)
+    args.func(args)
 
 
 if __name__ == "__main__":

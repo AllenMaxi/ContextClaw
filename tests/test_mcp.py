@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from contextclaw.config.agent_config import AgentConfig
 from contextclaw.providers.protocol import LLMResponse, ToolCall
+from contextclaw.runtime import create_tools
 from contextclaw.runner import AgentRunner
 from contextclaw.tools.manager import ToolManager
 
@@ -137,5 +138,63 @@ async def test_runner_executes_mcp_tool(tmp_path: Path):
 
         result = next(e for e in events if e.type == "tool_result")
         assert result.data["result"] == "from mcp"
+    finally:
+        await manager.stop_all()
+
+
+@pytest.mark.asyncio
+async def test_create_tools_merges_manual_and_generated_registries(tmp_path: Path):
+    script = _server_script(tmp_path)
+    manual_registry = _registry_file(tmp_path, script)
+    generated_registry = tmp_path / ".contextclaw" / "generated" / "mcp_servers.json"
+    generated_registry.parent.mkdir(parents=True)
+    generated_registry.write_text(
+        json.dumps(
+            {
+                "servers": [
+                    {
+                        "name": "demo",
+                        "command": [sys.executable, str(script)],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    lock_path = tmp_path / ".contextclaw" / "catalog.lock.json"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "connectors": [
+                    {
+                        "id": "planning-bundle",
+                        "bundles": ["planning"],
+                        "missing_prerequisites": [],
+                    }
+                ],
+                "skills": [],
+                "generated": {
+                    "mcp_servers_path": str(generated_registry),
+                    "policy_path": "",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = AgentConfig(
+        name="catalog-agent",
+        workspace=tmp_path,
+        mcp_servers_path=manual_registry,
+        tools=["filesystem"],
+    )
+    manager = await create_tools(config)
+    try:
+        names = {tool["name"] for tool in manager.list_tools()}
+        assert "filesystem_read" in names
+        assert "write_todos" in names
+        assert "mcp__demo__echo" in names
     finally:
         await manager.stop_all()

@@ -411,3 +411,34 @@ def test_policy_engine_from_file(tmp_path: Path):
     engine = PolicyEngine.from_file(policy_file)
     assert engine.check_tool("filesystem_read") == "allow"
     assert engine.check_tool("shell_execute") == "block"
+
+
+def test_policy_engine_merges_generated_overlay_with_wildcard_rules(tmp_path: Path):
+    base = tmp_path / "policy.yaml"
+    overlay = tmp_path / "generated.yaml"
+    base.write_text(
+        "permissions:\n"
+        "  tools:\n"
+        "    auto_approve:\n"
+        "      - filesystem_read\n"
+        "  filesystem:\n"
+        "    allowed:\n"
+        "      - /workspace\n",
+        encoding="utf-8",
+    )
+    overlay.write_text(
+        "permissions:\n"
+        "  tools:\n"
+        "    require_confirm:\n"
+        "      - mcp__github__*\n"
+        "    blocked:\n"
+        "      - execute\n",
+        encoding="utf-8",
+    )
+
+    engine = PolicyEngine.from_files(base, overlay)
+
+    assert engine is not None
+    assert engine.check_tool("filesystem_read") == "allow"
+    assert engine.check_tool("mcp__github__status") == "confirm"
+    assert engine.check_tool("execute") == "block"
