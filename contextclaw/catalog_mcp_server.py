@@ -33,19 +33,6 @@ def _status_payload(connector_id: str) -> dict[str, Any]:
     }
 
 
-def _read_messages() -> list[dict[str, Any]]:
-    messages: list[dict[str, Any]] = []
-    for raw in sys.stdin:
-        line = raw.strip()
-        if not line:
-            continue
-        try:
-            message = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(message, dict):
-            messages.append(message)
-    return messages
 
 
 def _emit(payload: dict[str, Any]) -> None:
@@ -67,7 +54,17 @@ def main(argv: list[str] | None = None) -> int:
     spec = specs[connector_id]
     tool_name = "status"
 
-    for message in _read_messages():
+    for raw in sys.stdin:
+        line = raw.strip()
+        if not line:
+            continue
+        try:
+            message = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(message, dict):
+            continue
+
         method = message.get("method")
         request_id = message.get("id")
         if method == "initialize":
