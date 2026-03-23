@@ -5,12 +5,24 @@ import asyncio
 import json
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from .config.agent_config import AgentConfig
+from typing import Any
 
 AGENTS_DIR = Path.home() / ".contextclaw" / "agents"
+
+
+def _rewrite_config(
+    lines: list[str], updates: dict[str, str], remove_keys: set[str] | None = None
+) -> list[str]:
+    remove_keys = remove_keys or set()
+    managed_keys = set(updates) | set(remove_keys)
+    filtered = [
+        line
+        for line in lines
+        if not any(line.startswith(f"{key}:") for key in managed_keys)
+    ]
+    for key, value in updates.items():
+        filtered.append(f"{key}: {value}")
+    return filtered
 
 
 def cmd_create(args: argparse.Namespace) -> None:
@@ -182,11 +194,17 @@ def cmd_status(args: argparse.Namespace) -> None:
     print(f"Tools: {', '.join(config.tools) if config.tools else 'none'}")
     print(f"ContextGraph: {'linked' if config.cg_url else 'not linked'}")
     print(f"Skills: {config.skills_path if config.skills_path else 'none'}")
-    print(f"MCP Registry: {config.mcp_servers_path if config.mcp_servers_path else 'none'}")
+    print(
+        f"MCP Registry: {config.mcp_servers_path if config.mcp_servers_path else 'none'}"
+    )
     print(f"Subagents: {config.subagents_path if config.subagents_path else 'none'}")
     print(f"Checkpoint: {config.checkpoint_path if config.checkpoint_path else 'none'}")
     if config.agent_id:
         print(f"Agent ID: {config.agent_id}")
+    elif config.cg_url:
+        print(
+            "Agent ID: none (run `cclaw link ... --register` to enable ContextGraph recall/store)"
+        )
 
 
 def cmd_link(args: argparse.Namespace) -> None:
@@ -196,31 +214,65 @@ def cmd_link(args: argparse.Namespace) -> None:
         print(f"Agent '{args.name}' not found.", file=sys.stderr)
         sys.exit(1)
 
-    # Update config.yaml with CG settings
     config_path = workspace / "config.yaml"
     lines = config_path.read_text().splitlines() if config_path.exists() else []
+    updates = {"cg_url": args.cg_url}
 
-    # Remove existing cg_ lines
-    lines = [
-        line
-        for line in lines
-        if not line.startswith("cg_url:") and not line.startswith("cg_api_key:")
-    ]
-    lines.append(f"cg_url: {args.cg_url}")
-
-    # Prefer env var reference over plaintext API key
     if args.api_key.startswith("${") or args.api_key.startswith("env:"):
-        # User passed an env var reference — store as-is
-        lines.append(f"cg_api_key: {args.api_key}")
+        updates["cg_api_key"] = args.api_key
     else:
-        # Store as env var reference and set the env var hint
-        lines.append("cg_api_key: ${CONTEXTGRAPH_API_KEY}")
+        updates["cg_api_key"] = "${CONTEXTGRAPH_API_KEY}"
         print(
             f"WARNING: For security, set CONTEXTGRAPH_API_KEY in your environment "
             f"instead of storing the key in config.yaml.\n"
             f"  export CONTEXTGRAPH_API_KEY='{args.api_key}'",
             file=sys.stderr,
         )
+
+    lines = _rewrite_config(lines, updates)
+
+    if args.register:
+        from .config.agent_config import _resolve_env
+        from .knowledge import ContextGraphBridge
+
+        resolved_api_key = _resolve_env(
+            args.api_key, env_fallback="CONTEXTGRAPH_API_KEY"
+        )
+        if not resolved_api_key:
+            print(
+                "ContextGraph registration requires an API key or an environment variable reference that resolves now.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        capabilities = args.capability or []
+        bridge = ContextGraphBridge(cg_url=args.cg_url, api_key=resolved_api_key)
+        try:
+            agent_id = bridge.register(
+                name=args.name,
+                org_id=args.org_id,
+                capabilities=capabilities,
+            )
+        except Exception as exc:  # noqa: BLE001
+            config_path.write_text("\n".join(lines) + "\n")
+            print(
+                f"Linked '{args.name}' to ContextGraph at {args.cg_url}",
+                file=sys.stderr,
+            )
+            print(f"Failed to register agent with ContextGraph: {exc}", file=sys.stderr)
+            sys.exit(1)
+
+        registration_updates = {"agent_id": agent_id}
+        if bridge.api_key:
+            registration_updates["cg_api_key"] = "${CONTEXTGRAPH_AGENT_KEY}"
+            print(
+                "WARNING: ContextGraph issued a dedicated agent API key. "
+                "Set it in your environment before chatting:\n"
+                f"  export CONTEXTGRAPH_AGENT_KEY='{bridge.api_key}'",
+                file=sys.stderr,
+            )
+        lines = _rewrite_config(lines, registration_updates)
+        print(f"Registered '{args.name}' with ContextGraph as {agent_id}")
 
     config_path.write_text("\n".join(lines) + "\n")
     print(f"Linked '{args.name}' to ContextGraph at {args.cg_url}")
@@ -261,6 +313,22 @@ def main() -> None:
     p.add_argument("name")
     p.add_argument("--cg-url", required=True)
     p.add_argument("--api-key", required=True)
+    p.add_argument(
+        "--register",
+        action="store_true",
+        help="Register the agent with ContextGraph now and persist agent_id",
+    )
+    p.add_argument(
+        "--org-id",
+        default="default",
+        help="ContextGraph org_id to use when --register is set",
+    )
+    p.add_argument(
+        "--capability",
+        action="append",
+        default=[],
+        help="Capability to register with ContextGraph (repeatable)",
+    )
 
     # Global flags
     parser.add_argument(

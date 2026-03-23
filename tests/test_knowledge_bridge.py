@@ -182,12 +182,16 @@ def test_get_trust_handles_exception_gracefully(patch_sdk):
 
 def test_register_sets_agent_id(patch_sdk):
     client_mock = MagicMock()
-    client_mock.register_agent.return_value = {"agent_id": "new-agent-99"}
+    client_mock.register_agent.return_value = {
+        "agent_id": "new-agent-99",
+        "api_key": "issued-agent-key",
+    }
     bridge = _make_bridge(agent_id="")
     bridge._client = client_mock
     agent_id = bridge.register("MyAgent", "org-1", capabilities=["read", "write"])
     assert agent_id == "new-agent-99"
     assert bridge.agent_id == "new-agent-99"
+    assert bridge.api_key == "issued-agent-key"
 
 
 # ---------------------------------------------------------------------------

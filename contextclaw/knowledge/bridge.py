@@ -23,6 +23,9 @@ class ContextGraphBridge:
     _client: Any = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
+        self._build_client()
+
+    def _build_client(self) -> None:
         from contextgraph_sdk import ContextGraph, HttpTransport
 
         self._client = ContextGraph(
@@ -103,6 +106,9 @@ class ContextGraphBridge:
             )
 
         self.agent_id = result["agent_id"]
+        if result.get("api_key"):
+            self.api_key = str(result["api_key"])
+            self._build_client()
         return self.agent_id
 
     def discover(self, query: str = "", min_reputation: float = 0.0) -> list[dict]:

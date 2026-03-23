@@ -95,14 +95,10 @@ class AgentConfig:
         soul_path = _resolve_config_path(soul_raw, base_dir) if soul_raw else None
 
         skills_raw = raw.get("skills_path", "")
-        skills_path = (
-            _resolve_config_path(skills_raw, base_dir) if skills_raw else None
-        )
+        skills_path = _resolve_config_path(skills_raw, base_dir) if skills_raw else None
 
         mcp_raw = raw.get("mcp_servers_path", "")
-        mcp_servers_path = (
-            _resolve_config_path(mcp_raw, base_dir) if mcp_raw else None
-        )
+        mcp_servers_path = _resolve_config_path(mcp_raw, base_dir) if mcp_raw else None
 
         subagents_raw = raw.get("subagents_path", "")
         subagents_path = (
@@ -119,10 +115,11 @@ class AgentConfig:
 
         # Resolve credentials — support ${ENV_VAR} and env:ENV_VAR syntax,
         # with fallback to well-known environment variable names
-        cg_api_key = _resolve_env(
-            raw.get("cg_api_key", ""),
-            env_fallback="CONTEXTGRAPH_API_KEY",
-        )
+        cg_api_key = _resolve_env(raw.get("cg_api_key", ""))
+        if not cg_api_key:
+            cg_api_key = os.environ.get("CONTEXTGRAPH_AGENT_KEY", "") or os.environ.get(
+                "CONTEXTGRAPH_API_KEY", ""
+            )
 
         return cls(
             name=raw.get("name", path.parent.name),
@@ -180,6 +177,8 @@ class AgentConfig:
                 config.subagents_path = subagents_dir.resolve()
 
         if config.checkpoint_path is None:
-            config.checkpoint_path = (workspace / ".contextclaw" / "session.json").resolve()
+            config.checkpoint_path = (
+                workspace / ".contextclaw" / "session.json"
+            ).resolve()
 
         return config
