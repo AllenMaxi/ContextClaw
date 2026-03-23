@@ -614,29 +614,29 @@ class AgentRunner:
             if not root.is_dir():
                 return f"Error: '{root}' is not a directory"
             workspace_root = self.config.workspace.resolve()
-            matches: list[dict[str, Any]] = []
-            truncated = False
+            glob_matches: list[dict[str, Any]] = []
+            glob_truncated = False
             for match in sorted(root.glob(pattern)):
                 resolved = match.resolve()
                 try:
                     resolved.relative_to(workspace_root)
                 except ValueError:
                     continue
-                matches.append(
+                glob_matches.append(
                     {
                         "path": self._relative_to_workspace(resolved),
                         "type": "directory" if resolved.is_dir() else "file",
                     }
                 )
-                if len(matches) >= 200:
-                    truncated = True
+                if len(glob_matches) >= 200:
+                    glob_truncated = True
                     break
             return json.dumps(
                 {
                     "path": self._relative_to_workspace(root),
                     "pattern": pattern,
-                    "matches": matches,
-                    "truncated": truncated,
+                    "matches": glob_matches,
+                    "truncated": glob_truncated,
                 },
                 ensure_ascii=True,
             )
@@ -663,31 +663,31 @@ class AgentRunner:
                     entry for entry in sorted(root.glob(include)) if entry.is_file()
                 ]
 
-            matches: list[dict[str, Any]] = []
-            truncated = False
+            grep_matches: list[dict[str, Any]] = []
+            grep_truncated = False
             for file_path in files:
                 text = file_path.read_text(encoding="utf-8", errors="replace")
                 for line_number, line in enumerate(text.splitlines(), start=1):
                     if regex.search(line):
-                        matches.append(
+                        grep_matches.append(
                             {
                                 "path": self._relative_to_workspace(file_path),
                                 "line_number": line_number,
                                 "line": line,
                             }
                         )
-                        if len(matches) >= 50:
-                            truncated = True
+                        if len(grep_matches) >= 50:
+                            grep_truncated = True
                             break
-                if truncated:
+                if grep_truncated:
                     break
 
             return json.dumps(
                 {
                     "pattern": pattern,
                     "path": self._relative_to_workspace(root),
-                    "matches": matches,
-                    "truncated": truncated,
+                    "matches": grep_matches,
+                    "truncated": grep_truncated,
                 },
                 ensure_ascii=True,
             )
