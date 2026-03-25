@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ..connectors import ConnectorSessionManager
+
 logger = logging.getLogger(__name__)
 
 
@@ -24,6 +26,7 @@ class ToolManager:
         self._processes: dict[str, asyncio.subprocess.Process] = {}
         self._mcp_clients: dict[str, Any] = {}
         self._mcp_tool_bindings: dict[str, tuple[str, str]] = {}
+        self._connector_sessions = ConnectorSessionManager(self._register_remote_tool)
 
     # ------------------------------------------------------------------
     # Registration
@@ -101,6 +104,7 @@ class ToolManager:
         for name in client_names:
             client = self._mcp_clients.pop(name)
             await client.stop()
+        await self._connector_sessions.stop_all()
 
     async def load_mcp_registry(
         self, path: Path, *, skip_existing_servers: bool = False
@@ -142,6 +146,17 @@ class ToolManager:
                 )
                 self._mcp_tool_bindings[local_name] = (server.name, remote_name)
 
+    async def load_connector_registry(
+        self,
+        path: Path,
+        *,
+        skip_existing_connectors: bool = False,
+    ) -> None:
+        await self._connector_sessions.load_registry(
+            path,
+            skip_existing_connectors=skip_existing_connectors,
+        )
+
     # ------------------------------------------------------------------
     # Tool access
     # ------------------------------------------------------------------
@@ -162,13 +177,83 @@ class ToolManager:
         return self._tools.get(name)
 
     def is_mcp_tool(self, name: str) -> bool:
-        return name in self._mcp_tool_bindings
+        return name in self._mcp_tool_bindings or self._connector_sessions.has_tool(
+            name
+        )
 
     async def call_mcp_tool(self, name: str, arguments: dict[str, Any]) -> str:
-        if name not in self._mcp_tool_bindings:
-            raise KeyError(f"Unknown MCP tool '{name}'")
-        server_name, remote_name = self._mcp_tool_bindings[name]
-        client = self._mcp_clients.get(server_name)
-        if client is None:
-            raise RuntimeError(f"MCP server '{server_name}' is not running")
-        return await client.call_tool(remote_name, arguments)
+        if name in self._mcp_tool_bindings:
+            server_name, remote_name = self._mcp_tool_bindings[name]
+            client = self._mcp_clients.get(server_name)
+            if client is None:
+                raise RuntimeError(f"MCP server '{server_name}' is not running")
+            return await client.call_tool(remote_name, arguments)
+        if self._connector_sessions.has_tool(name):
+            return await self._connector_sessions.call_tool(name, arguments)
+        raise KeyError(f"Unknown MCP tool '{name}'")
+
+    async def connector_health(
+        self,
+        connector_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        return await self._connector_sessions.connector_health(connector_id)
+
+    async def connector_doctor(
+        self,
+        connector_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        return await self._connector_sessions.connector_doctor(connector_id)
+
+    async def connector_auth(self, connector_id: str) -> dict[str, Any]:
+        return await self._connector_sessions.connector_auth(connector_id)
+
+    def connector_tools(
+        self,
+        connector_id: str | None = None,
+    ) -> dict[str, list[str]]:
+        return self._connector_sessions.connector_tools(connector_id)
+
+    def connector_snapshots(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "id": snapshot.id,
+                "display_name": snapshot.display_name,
+                "driver": snapshot.driver,
+                "transport": snapshot.transport,
+                "endpoint": snapshot.endpoint,
+                "authenticated": snapshot.authenticated,
+                "healthy": snapshot.healthy,
+                "auth_pending": snapshot.auth_pending,
+                "tool_count": snapshot.tool_count,
+                "tool_names": snapshot.tool_names,
+                "capabilities": snapshot.capabilities,
+                "missing_env": snapshot.missing_env,
+                "missing_prerequisites": snapshot.missing_prerequisites,
+                "startup_error": snapshot.startup_error,
+                "docs_url": snapshot.docs_url,
+            }
+            for snapshot in self._connector_sessions.snapshots()
+        ]
+
+    def _register_remote_tool(
+        self,
+        name: str,
+        description: str,
+        parameters: dict[str, Any],
+        connector_id: str,
+    ) -> bool:
+        if name in self._tools:
+            logger.warning(
+                "Skipping remote tool '%s' from connector '%s' because a tool with that name is already registered",
+                name,
+                connector_id,
+            )
+            return False
+        self.register(
+            ToolDefinition(
+                name=name,
+                description=description,
+                parameters=parameters,
+            )
+        )
+        return True

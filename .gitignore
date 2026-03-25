@@ -10,8 +10,10 @@ build/
 .mypy_cache/
 .ruff_cache/
 .venv/
+.venv-build/
 venv/
 env/
 .env
 *.log
 .DS_Store
+node_modules/

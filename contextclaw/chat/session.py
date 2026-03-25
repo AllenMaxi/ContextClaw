@@ -42,7 +42,7 @@ class ChatSession:
     Thread-safe: all mutations to the message list are guarded by a lock.
     """
 
-    def __init__(self, system_prompt: str = "", max_history: int = 100) -> None:
+    def __init__(self, system_prompt: str = "", max_history: int = 0) -> None:
         self.system_prompt = system_prompt
         self.max_history = max_history
         self._messages: list[Message] = []
@@ -109,7 +109,11 @@ class ChatSession:
     ) -> ChatSession:
         session = cls(
             system_prompt=system_prompt or str(data.get("system_prompt", "")),
-            max_history=max_history or int(data.get("max_history", 100)),
+            max_history=(
+                int(max_history)
+                if max_history is not None
+                else int(data.get("max_history", 0))
+            ),
         )
         session._messages = [
             Message.from_dict(item)
@@ -183,5 +187,5 @@ class ChatSession:
 
     def _trim(self) -> None:
         """Trim history to max_history. Caller must hold self._lock."""
-        if len(self._messages) > self.max_history:
+        if self.max_history > 0 and len(self._messages) > self.max_history:
             self._messages = self._messages[-self.max_history :]

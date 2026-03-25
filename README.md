@@ -102,6 +102,64 @@ The short version:
 - An initial curated connector and skill catalog now ships with ContextClaw.
 - The biggest remaining investment is expanding that catalog over time.
 
+## ContextClaw Studio
+
+ContextClaw now also ships a local-first control plane for the same
+project-backed runtime:
+
+- a FastAPI Studio daemon with a shared event journal
+- a React dashboard at `/studio`
+- a native Tauri shell that bundles the frontend and a Python daemon sidecar
+- project-local orchestration via `Workflow.md` plus `agents/<name>/...`
+- file-backed memory layers with revision history and ContextGraph sync
+
+That means the CLI and desktop view the same runs, approvals, memory files,
+docs proposals, and ContextGraph status instead of maintaining separate state.
+
+### Studio Quick Start
+
+```bash
+# Runtime + Studio
+pip install -e ".[all]"
+
+# Desktop build tooling (only needed for the native shell)
+pip install -e ".[studio,desktop-build]"
+
+# Local web control plane
+cclaw project init --root /path/to/repo
+cclaw studio serve --root /path/to/repo
+```
+
+Then open `http://127.0.0.1:8765/studio/`.
+
+To build the native desktop shell:
+
+```bash
+cd studio-ui
+npm install
+CONTEXTCLAW_PYTHON_BIN=/path/to/python npm run tauri:build
+```
+
+The Tauri build bundles:
+
+- the React Studio frontend
+- a frozen `contextclaw-studio-daemon` sidecar
+- the same project-local runtime state the CLI uses
+
+CI now verifies the desktop path in three layers:
+
+- `studio-ui` frontend tests and production build
+- a wheel packaging smoke test that checks `contextclaw/studio/_frontend/`
+- a macOS desktop smoke build that launches the bundled sidecar and verifies
+  graceful shutdown
+
+For release packaging, GitHub Actions now includes a `Studio Release` workflow.
+If Apple signing secrets are configured (`APPLE_CERTIFICATE`,
+`APPLE_CERTIFICATE_PASSWORD`, `KEYCHAIN_PASSWORD`, and optionally `APPLE_ID`,
+`APPLE_PASSWORD`, `APPLE_TEAM_ID` for notarization), the workflow will sign and
+notarize the desktop build. Without those secrets, it still produces draft
+release artifacts for internal testing.
+
 ## What You Get On Day One
 
 - **Providers:** Claude, OpenAI, and Ollama
@@ -219,6 +277,15 @@ The demo shows the product story end to end:
 - generating MCP and policy state
 - delegating through `task`
 - connecting the runtime story back to ContextGraph
+
+Studio desktop demo:
+
+- video: [demo-artifacts/contextclaw-studio-demo.mp4](./demo-artifacts/contextclaw-studio-demo.mp4)
+- screenshots:
+  - [demo-artifacts/01-no-project.png](./demo-artifacts/01-no-project.png)
+  - [demo-artifacts/02-project-initialized.png](./demo-artifacts/02-project-initialized.png)
+  - [demo-artifacts/03-run-started.png](./demo-artifacts/03-run-started.png)
+  - [demo-artifacts/04-full-dashboard.png](./demo-artifacts/04-full-dashboard.png)
 
 Generate the vertical demo asset and walkthrough:
 

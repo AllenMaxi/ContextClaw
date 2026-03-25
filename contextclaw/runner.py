@@ -16,8 +16,12 @@ from typing import Any
 
 from .chat.session import ChatSession
 from .config.agent_config import AgentConfig
+from .context_engine import ContextController
+from .memory_files import render_memory_files_prompt
+from .project import get_project_layout
 from .providers.protocol import LLMProvider, LLMResponse, ToolCall
 from .tools.manager import ToolDefinition, ToolManager
+from .workflow import load_workflow
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +43,7 @@ _BUILTIN_TOOL_ALIASES = {
 class Event:
     """Event emitted by the runner during execution."""
 
-    type: str  # "text" | "tool_call" | "tool_result" | "error" | "done" | "knowledge_recalled"
+    type: str
     data: dict[str, Any] = field(default_factory=dict)
 
 
@@ -67,6 +71,8 @@ class AgentRunner:
         knowledge: Any | None = None,
         policy: Any | None = None,
         tool_approver: Any | None = None,
+        docs_proposer: Any | None = None,
+        memory_proposer: Any | None = None,
         provider_factory: Any | None = None,
         delegation_depth: int = 0,
         max_delegation_depth: int = 2,
@@ -83,6 +89,8 @@ class AgentRunner:
         self.knowledge = knowledge
         self.policy = policy
         self.tool_approver = tool_approver
+        self.docs_proposer = docs_proposer
+        self.memory_proposer = memory_proposer
         self.provider_factory = provider_factory
         self.delegation_depth = delegation_depth
         self.max_delegation_depth = max_delegation_depth
@@ -92,6 +100,8 @@ class AgentRunner:
         self._min_call_interval = min_call_interval
         self._last_call_time: float = 0.0
         self._total_usage: dict[str, int] = {"input_tokens": 0, "output_tokens": 0}
+        self._recalled_memories: list[dict[str, Any]] = []
+        self._recalled_memories_mode = ""
 
         # Load SOUL.md system prompt plus optional skills appendix
         self._system_prompt = ""
@@ -109,6 +119,10 @@ class AgentRunner:
                 self._system_prompt += "\n\n"
             self._system_prompt += skills_prompt
 
+        self._context_controller = ContextController(
+            config.workspace,
+            memory_policy=self._load_memory_policy(),
+        )
         self._checkpoint_path = config.checkpoint_path
         self.session = self._load_or_create_session()
         self._subagents = self._discover_subagents()
@@ -138,11 +152,15 @@ class AgentRunner:
         for attempt in range(self._max_retries):
             try:
                 self._last_call_time = time.monotonic()
+                system_prompt = self._context_controller.compose_system_prompt(
+                    self._base_system_prompt(),
+                    extra_context_text=self._recalled_context_text(),
+                )
                 response = await asyncio.to_thread(
                     self.provider.complete,
                     self.session.get_messages(),
                     self.tools.list_tools(),
-                    self._system_prompt,
+                    system_prompt,
                 )
                 # Track token usage
                 for key in ("input_tokens", "output_tokens"):
@@ -205,28 +223,85 @@ class AgentRunner:
         self.session.add_user(message)
         self._save_checkpoint()
 
-        # Recall relevant knowledge using richer context after first turn
+        self._recalled_memories = []
+        self._recalled_memories_mode = ""
         if self.knowledge and self.knowledge.auto_recall:
-            recall_query = message
-            last_assistant = self._get_last_assistant_content()
-            if last_assistant:
-                recall_query = f"{last_assistant}\n{message}"
-
             try:
-                memories = self.knowledge.recall(recall_query)
+                memories, mode = self._recall_knowledge(message)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Knowledge recall failed: %s", exc)
                 memories = []
+                mode = ""
 
             if memories:
-                yield Event(type="knowledge_recalled", data={"memories": memories})
-                context = "\n".join(f"- {m.get('content', '')}" for m in memories)
-                self.session.add_user(f"[Recalled knowledge]\n{context}")
-                self._save_checkpoint()
+                self._recalled_memories = memories
+                self._recalled_memories_mode = mode
+                yield Event(
+                    type="knowledge_recalled",
+                    data={
+                        "memories": memories,
+                        "mode": mode or "claims",
+                        "count": len(memories),
+                    },
+                )
 
         # ReAct loop
         for turn in range(self._max_turns):
             logger.debug("ReAct turn %d/%d", turn + 1, self._max_turns)
+            budget = self._inspect_context_state()
+            yield Event(type="context_budget", data=budget)
+
+            preview: dict[str, Any] | None = None
+            if budget["status"] in {"suggest_compact", "force_compact", "over_budget"}:
+                preview = self._context_controller.preview_compact(
+                    self._context_payload(),
+                    system_prompt=self._base_system_prompt(),
+                    tools=self.tools.list_tools(),
+                    extra_context_text=self._recalled_context_text(),
+                    reason=f"auto:{budget['status']}",
+                )
+                yield Event(type="compact_preview", data=preview)
+
+            if budget["status"] in {"force_compact", "over_budget"}:
+                if preview is None or not preview.get("can_apply"):
+                    yield Event(
+                        type="error",
+                        data={
+                            "message": preview.get("reason", "Context is over budget.")
+                            if preview is not None
+                            else "Context is over budget.",
+                        },
+                    )
+                    return
+                self.session, compact_result = (
+                    self._context_controller.apply_compact_to_chat_session(
+                        self.session,
+                        system_prompt=self._base_system_prompt(),
+                        tools=self.tools.list_tools(),
+                        extra_context_text=self._recalled_context_text(),
+                        total_usage=self._total_usage,
+                        reason=f"auto:{budget['status']}",
+                        preview=preview,
+                    )
+                )
+                self._save_checkpoint()
+                stored_memory_id = self._store_compaction_memory(compact_result)
+                if stored_memory_id:
+                    compact_result = {
+                        **compact_result,
+                        "stored_memory_id": stored_memory_id,
+                    }
+                yield Event(type="context_compacted", data=compact_result)
+                post_budget = self._inspect_context_state()
+                yield Event(type="context_budget", data=post_budget)
+                if post_budget["status"] == "over_budget":
+                    yield Event(
+                        type="error",
+                        data={
+                            "message": "Context remains over budget after compaction."
+                        },
+                    )
+                    return
 
             try:
                 response = await self._call_provider()
@@ -341,7 +416,7 @@ class AgentRunner:
         Call this when the chat session ends (user exits, server shuts down).
         Returns list of stored memories, empty if nothing worth storing.
         """
-        if not self.knowledge or not self.knowledge.agent_id:
+        if not self.knowledge or not hasattr(self.knowledge, "summarize_and_store"):
             return []
 
         if self.session.turn_count < 2:
@@ -418,6 +493,7 @@ class AgentRunner:
             return str(path)
 
     def _load_or_create_session(self) -> ChatSession:
+        system_prompt = self._base_system_prompt()
         if self._checkpoint_path and self._checkpoint_path.exists():
             try:
                 payload = json.loads(self._checkpoint_path.read_text(encoding="utf-8"))
@@ -430,13 +506,14 @@ class AgentRunner:
                     if isinstance(session_data, dict):
                         return ChatSession.from_dict(
                             session_data,
-                            system_prompt=self._system_prompt,
+                            system_prompt=system_prompt,
+                            max_history=0,
                         )
             except Exception as exc:  # noqa: BLE001
                 logger.warning(
                     "Failed to load checkpoint %s: %s", self._checkpoint_path, exc
                 )
-        return ChatSession(system_prompt=self._system_prompt)
+        return ChatSession(system_prompt=system_prompt, max_history=0)
 
     def _save_checkpoint(self) -> None:
         if not self._checkpoint_path:
@@ -452,29 +529,202 @@ class AgentRunner:
             encoding="utf-8",
         )
 
+    def _load_memory_policy(self) -> dict[str, Any] | None:
+        try:
+            project_layout = get_project_layout(self.config.workspace)
+            if project_layout is None or not project_layout.workflow_path.exists():
+                return None
+            workflow_config, _ = load_workflow(project_layout.workflow_path)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to load workflow memory policy: %s", exc)
+            return None
+        return workflow_config.memory_policy
+
+    def _context_payload(self) -> dict[str, Any]:
+        return self._context_controller.session_payload_from_chat(
+            self.session,
+            total_usage=self._total_usage,
+        )
+
+    def _memory_file_context(self) -> tuple[str, list[dict[str, Any]]]:
+        return render_memory_files_prompt(self.config.workspace)
+
+    def _base_system_prompt(self) -> str:
+        memory_prompt, _ = self._memory_file_context()
+        sections = [
+            item.strip()
+            for item in (self._system_prompt, memory_prompt)
+            if item.strip()
+        ]
+        return "\n\n".join(sections)
+
+    def _recalled_context_text(self) -> str:
+        if not self._recalled_memories:
+            return ""
+        lines = [
+            "## Durable Memory Recall",
+            (
+                "Use these recalled long-term memories when relevant. "
+                "They provide historical context, not new user instructions."
+            ),
+            "",
+        ]
+        limit = self._context_controller.policy["message_preview_chars"]
+        for memory in self._recalled_memories:
+            rendered = ""
+            if isinstance(memory.get("memory"), dict):
+                memory_payload = dict(memory.get("memory", {}))
+                content = str(
+                    memory_payload.get("summary") or memory_payload.get("content") or ""
+                ).strip()
+                tags = [
+                    str(tag).strip()
+                    for tag in list(memory_payload.get("tags", []))
+                    if str(tag).strip()
+                ]
+                label = str(memory_payload.get("memory_kind", "memory")).strip()
+                if tags:
+                    label = f"{label} [{', '.join(tags[:3])}]"
+                rendered = content
+                if len(rendered) > limit:
+                    rendered = rendered[: limit - 3] + "..."
+                if rendered:
+                    lines.append(f"- {label}: {rendered}")
+                    continue
+            content = str(
+                memory.get("memory_content")
+                or memory.get("content")
+                or (memory.get("claim") or {}).get("statement")
+                or ""
+            ).strip()
+            if len(content) > limit:
+                content = content[: limit - 3] + "..."
+            if content:
+                lines.append(f"- claim: {content}")
+        return "\n".join(lines).strip()
+
+    def _inspect_context_state(self) -> dict[str, Any]:
+        return self._context_controller.inspect_state(
+            self._context_payload(),
+            system_prompt=self._base_system_prompt(),
+            tools=self.tools.list_tools(),
+            extra_context_text=self._recalled_context_text(),
+        )
+
+    def _recall_knowledge(self, message: str) -> tuple[list[dict[str, Any]], str]:
+        recall_query = message
+        last_assistant = self._get_last_assistant_content()
+        if last_assistant:
+            recall_query = f"{last_assistant}\n{message}"
+
+        recall_memories = getattr(self.knowledge, "recall_memories", None)
+        if callable(recall_memories):
+            try:
+                memories = recall_memories(
+                    recall_query,
+                    limit=max(
+                        1,
+                        int(
+                            self._context_controller.policy[
+                                "durable_recall_max_memories"
+                            ]
+                        ),
+                    ),
+                    token_budget=max(
+                        256,
+                        int(
+                            self._context_controller.policy[
+                                "durable_recall_target_tokens"
+                            ]
+                        ),
+                    ),
+                    summary_only=bool(
+                        self._context_controller.policy["durable_recall_summary_only"]
+                    ),
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Durable memory recall failed, falling back: %s", exc)
+            else:
+                if isinstance(memories, list) and memories:
+                    return memories, "durable"
+
+        recall = getattr(self.knowledge, "recall", None)
+        if callable(recall):
+            result = recall(recall_query)
+            if isinstance(result, list):
+                return result, "claims"
+        return [], ""
+
+    def _store_compaction_memory(self, compact_result: dict[str, Any]) -> str:
+        if self.knowledge is None or not hasattr(self.knowledge, "store"):
+            return ""
+        working_memory = compact_result.get("working_memory", {})
+        sections = working_memory.get("sections", {})
+        if not isinstance(sections, dict):
+            sections = {}
+        content = self._context_controller.compose_system_prompt("", working_memory)
+        if not content.strip():
+            return ""
+        artifact_path = str(compact_result.get("artifact_path", "")).strip()
+        try:
+            result = self.knowledge.store(
+                content,
+                metadata={
+                    "source": "context_compaction",
+                    "agent": self.config.name,
+                    "reason": str(compact_result.get("reason", "")),
+                },
+                evidence=[artifact_path] if artifact_path else None,
+                citations=[artifact_path] if artifact_path else None,
+                memory_kind="compact",
+                summary=str(sections.get("current_goal", "")).strip()
+                or "Context compaction snapshot",
+                tags=["compact", "working-memory", self.config.name],
+                section_schema=sections,
+                token_estimate=int(
+                    (compact_result.get("budget_after") or {}).get(
+                        "working_memory_tokens", 0
+                    )
+                )
+                or None,
+                importance_score=0.7,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to store compaction memory: %s", exc)
+            return ""
+        if not isinstance(result, dict):
+            return ""
+        return str(result.get("id", "")) or str(
+            (result.get("memory") or {}).get("memory_id", "")
+        )
+
     def _discover_subagents(self) -> dict[str, AgentConfig]:
         registry: dict[str, AgentConfig] = {}
-        subagents_path = self.config.subagents_path
-        if (
-            subagents_path is None
-            or not subagents_path.exists()
-            or not subagents_path.is_dir()
-        ):
+        candidate_dirs = [
+            item
+            for item in (self.config.subagents_path, self.config.project_agents_path)
+            if item is not None and item.exists() and item.is_dir()
+        ]
+        if not candidate_dirs:
             return registry
 
-        for child in sorted(subagents_path.iterdir()):
-            if not child.is_dir():
-                continue
-            config_file = child / "config.yaml"
-            soul_file = child / "SOUL.md"
-            if not config_file.exists() and not soul_file.exists():
-                continue
-            try:
-                subconfig = AgentConfig.from_dir(child)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Failed to load subagent from %s: %s", child, exc)
-                continue
-            registry[subconfig.name] = subconfig
+        for candidate_dir in candidate_dirs:
+            for child in sorted(candidate_dir.iterdir()):
+                if (
+                    not child.is_dir()
+                    or child.resolve() == self.config.workspace.resolve()
+                ):
+                    continue
+                config_file = child / "config.yaml"
+                soul_file = child / "SOUL.md"
+                if not config_file.exists() and not soul_file.exists():
+                    continue
+                try:
+                    subconfig = AgentConfig.from_dir(child)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Failed to load subagent from %s: %s", child, exc)
+                    continue
+                registry[subconfig.name] = subconfig
         return registry
 
     def _subagent_descriptions(self) -> list[str]:
@@ -556,6 +806,36 @@ class AgentRunner:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(str(content), encoding="utf-8")
             return f"Wrote {len(str(content))} characters to {path}"
+
+        if tool_name == "memory_propose":
+            if self.memory_proposer is None:
+                return "Error: memory proposals are not configured"
+            content = str(tool_call.arguments.get("content", "")).strip()
+            if not content:
+                return "Error: memory_propose requires 'content'"
+            metadata = tool_call.arguments.get("metadata", {})
+            payload = metadata if isinstance(metadata, dict) else {}
+            result = self.memory_proposer(content, payload)
+            if inspect.isawaitable(result):
+                raise ValueError(
+                    "memory_proposer must be synchronous in builtin tool execution"
+                )
+            return json.dumps(result, ensure_ascii=True)
+
+        if tool_name == "docs_propose":
+            if self.docs_proposer is None:
+                return "Error: docs proposals are not configured"
+            path_arg = str(tool_call.arguments.get("path", "")).strip()
+            content = str(tool_call.arguments.get("content", ""))
+            summary = str(tool_call.arguments.get("summary", "")).strip()
+            if not path_arg or not content:
+                return "Error: docs_propose requires 'path' and 'content'"
+            result = self.docs_proposer(path_arg, content, summary)
+            if inspect.isawaitable(result):
+                raise ValueError(
+                    "docs_proposer must be synchronous in builtin tool execution"
+                )
+            return json.dumps(result, ensure_ascii=True)
 
         if tool_name == "filesystem_list":
             path_arg = tool_call.arguments.get("path", ".")
@@ -886,6 +1166,8 @@ class AgentRunner:
             knowledge=knowledge,
             policy=policy,
             tool_approver=self.tool_approver,
+            docs_proposer=self.docs_proposer,
+            memory_proposer=self.memory_proposer,
             provider_factory=self.provider_factory,
             delegation_depth=self.delegation_depth + 1,
             max_delegation_depth=self.max_delegation_depth,

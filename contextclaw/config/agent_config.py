@@ -68,6 +68,7 @@ class AgentConfig:
     policy_path: Path | None = None  # path to policy YAML
     mcp_servers_path: Path | None = None  # path to an MCP registry JSON file
     subagents_path: Path | None = None  # path to sub-agent workspaces
+    project_agents_path: Path | None = None  # path to sibling project agents
     checkpoint_path: Path | None = None  # path to session checkpoint JSON
     sandbox_type: str = "process"  # docker | process | none
     tools: list[str] = field(default_factory=list)  # tool bundle names
@@ -105,6 +106,13 @@ class AgentConfig:
             _resolve_config_path(subagents_raw, base_dir) if subagents_raw else None
         )
 
+        project_agents_raw = raw.get("project_agents_path", "")
+        project_agents_path = (
+            _resolve_config_path(project_agents_raw, base_dir)
+            if project_agents_raw
+            else None
+        )
+
         checkpoint_raw = raw.get("checkpoint_path", "")
         checkpoint_path = (
             _resolve_config_path(checkpoint_raw, base_dir) if checkpoint_raw else None
@@ -131,6 +139,7 @@ class AgentConfig:
             policy_path=policy_path,
             mcp_servers_path=mcp_servers_path,
             subagents_path=subagents_path,
+            project_agents_path=project_agents_path,
             checkpoint_path=checkpoint_path,
             sandbox_type=raw.get("sandbox_type", "process"),
             tools=tools,

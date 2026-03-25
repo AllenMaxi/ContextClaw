@@ -255,12 +255,11 @@ async def test_knowledge_recall_and_store_full_cycle(tmp_path: Path):
     # Store happened
     knowledge.store.assert_called_once()
 
-    # Session messages include recalled context
+    # Recalled knowledge is layered into the system prompt, not injected as fake chat history
+    assert "## Durable Memory Recall" in provider.calls[0]["system"]
+    assert "User prefers concise answers" in provider.calls[0]["system"]
     messages = runner.session.get_messages()
-    recalled_msg = [
-        m for m in messages if "[Recalled knowledge]" in m.get("content", "")
-    ]
-    assert len(recalled_msg) == 1
+    assert all("[Recalled knowledge]" not in m.get("content", "") for m in messages)
 
 
 # ---------------------------------------------------------------------------

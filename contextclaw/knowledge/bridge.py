@@ -41,7 +41,7 @@ class ContextGraphBridge:
         except (ConnectionError, TimeoutError, OSError) as exc:
             logger.warning("Failed to recall from ContextGraph (transient): %s", exc)
             return []
-        except Exception as exc:  # noqa: BLE001
+        except (ValueError, KeyError, TypeError) as exc:
             logger.error("Unexpected error during ContextGraph recall: %s", exc)
             return []
 
@@ -51,17 +51,47 @@ class ContextGraphBridge:
         metadata: dict[str, str] | None = None,
         evidence: list[str] | None = None,
         citations: list[str] | None = None,
+        *,
+        memory_kind: str = "raw",
+        summary: str = "",
+        tags: list[str] | None = None,
+        parent_memory_id: str = "",
+        derived_from_memory_ids: list[str] | None = None,
+        token_estimate: int | None = None,
+        section_schema: dict[str, Any] | None = None,
+        importance_score: float | None = None,
+        pinned: bool = False,
     ) -> dict | None:
         """Store significant agent outputs as knowledge."""
         if not self.agent_id or not self.auto_store:
             return None
         try:
+            extra_fields: dict[str, Any] = {}
+            if memory_kind != "raw":
+                extra_fields["memory_kind"] = memory_kind
+            if summary:
+                extra_fields["summary"] = summary
+            if tags:
+                extra_fields["tags"] = tags
+            if parent_memory_id:
+                extra_fields["parent_memory_id"] = parent_memory_id
+            if derived_from_memory_ids:
+                extra_fields["derived_from_memory_ids"] = derived_from_memory_ids
+            if token_estimate is not None:
+                extra_fields["token_estimate"] = token_estimate
+            if section_schema:
+                extra_fields["section_schema"] = section_schema
+            if importance_score is not None:
+                extra_fields["importance_score"] = importance_score
+            if pinned:
+                extra_fields["pinned"] = True
             return self._client.store(
                 self.agent_id,
                 content,
                 metadata=metadata,
                 evidence=evidence,
                 citations=citations,
+                **extra_fields,
             )
         except (ConnectionError, TimeoutError, OSError) as exc:
             logger.warning("Failed to store to ContextGraph (transient): %s", exc)
@@ -69,6 +99,41 @@ class ContextGraphBridge:
         except Exception as exc:  # noqa: BLE001
             logger.error("Unexpected error during ContextGraph store: %s", exc)
             return None
+
+    def recall_memories(
+        self,
+        query: str,
+        *,
+        limit: int | None = None,
+        memory_kind: str | None = None,
+        pinned_only: bool = False,
+        min_importance: float | None = None,
+        tags: list[str] | None = None,
+        token_budget: int | None = None,
+        summary_only: bool = False,
+    ) -> list[dict]:
+        if not self.agent_id or not self.auto_recall:
+            return []
+        try:
+            return self._client.recall_memories(
+                self.agent_id,
+                query,
+                limit=limit or self.recall_limit,
+                memory_kind=memory_kind,
+                pinned_only=pinned_only,
+                min_importance=min_importance,
+                tags=tags,
+                token_budget=token_budget,
+                summary_only=summary_only,
+            )
+        except (ConnectionError, TimeoutError, OSError) as exc:
+            logger.warning(
+                "Failed to recall memories from ContextGraph (transient): %s", exc
+            )
+            return []
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Unexpected error during ContextGraph memory recall: %s", exc)
+            return []
 
     def get_trust(self) -> dict:
         """Get agent's trust score and governance state."""
@@ -184,6 +249,10 @@ class ContextGraphBridge:
                     "agent": agent_name,
                     "type": fact_type,
                 },
+                memory_kind="summary",
+                summary=fact["content"],
+                tags=["session-summary", fact_type],
+                importance_score=0.55,
             )
             if result:
                 stored.append(result)

@@ -6,6 +6,8 @@ from pathlib import Path
 
 import contextclaw.cli as cli
 import contextclaw.knowledge as knowledge_module
+from contextclaw.chat.session import ChatSession
+from contextclaw.memory_files import list_memory_file_revisions
 
 
 def _make_agent_workspace(base: Path, name: str = "demo-agent") -> Path:
@@ -174,3 +176,198 @@ def test_cmd_status_reports_catalog_install_state(monkeypatch, tmp_path: Path, c
     assert "Installed Connectors: github" in captured.out
     assert "Catalog Sync: up to date" in captured.out
     assert "Generated MCP Registry:" in captured.out
+
+
+def test_cmd_create_uses_project_agents_dir(monkeypatch, tmp_path: Path, capsys):
+    project_root = tmp_path / "project"
+    legacy_agents = tmp_path / "legacy-agents"
+    monkeypatch.setattr(cli, "AGENTS_DIR", legacy_agents)
+
+    cli.cmd_project_init(
+        argparse.Namespace(
+            root=str(project_root),
+            entry_agent="orchestrator",
+            provider="openai",
+        )
+    )
+    capsys.readouterr()
+    monkeypatch.chdir(project_root)
+
+    cli.cmd_create(
+        argparse.Namespace(name="reviewer", template="coding", provider="openai")
+    )
+
+    captured = capsys.readouterr()
+    assert (project_root / "agents" / "reviewer" / "config.yaml").exists()
+    assert not (legacy_agents / "reviewer").exists()
+    assert "Created agent 'reviewer'" in captured.out
+
+
+def test_cmd_context_and_compact_commands_use_project_state(
+    monkeypatch, tmp_path: Path, capsys
+):
+    project_root = tmp_path / "project"
+    cli.cmd_project_init(
+        argparse.Namespace(
+            root=str(project_root),
+            entry_agent="orchestrator",
+            provider="openai",
+        )
+    )
+    capsys.readouterr()
+    monkeypatch.chdir(project_root)
+
+    (project_root / "AGENTS.md").write_text(
+        "# Project Memory\n\nAlways prefer safe rollouts.\n",
+        encoding="utf-8",
+    )
+    workspace = project_root / "agents" / "orchestrator"
+    (workspace / "MEMORY.md").write_text(
+        "# Agent Memory\n\nThis agent keeps release notes short.\n",
+        encoding="utf-8",
+    )
+    checkpoint_path = workspace / ".contextclaw" / "session.json"
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    session = ChatSession(max_history=0)
+    for index in range(3):
+        session.add_user(f"Decision {index}: " + ("x" * 180))
+        session.add_assistant(f"Answer {index}: " + ("y" * 140))
+    checkpoint_path.write_text(
+        json.dumps({"session": session.to_dict(), "total_usage": {}}, indent=2),
+        encoding="utf-8",
+    )
+
+    cli.cmd_compact_preview(argparse.Namespace(name=None, reason="test_preview"))
+    preview_output = capsys.readouterr().out
+    assert "Compaction Preview:" in preview_output
+
+    cli.cmd_context_show(argparse.Namespace(name=None))
+    context_output = capsys.readouterr().out
+    assert "Agent: orchestrator" in context_output
+    assert "Pending Compact:" in context_output
+    assert "Always-Loaded Memory Files:" in context_output
+    assert "AGENTS.md" in context_output
+    assert "MEMORY.md" in context_output
+
+    cli.cmd_compact_apply(argparse.Namespace(name=None, reason="test_apply"))
+    apply_output = capsys.readouterr().out
+    assert "Applied compaction:" in apply_output
+
+
+def test_cmd_memory_file_show_write_and_sync(monkeypatch, tmp_path: Path, capsys):
+    project_root = tmp_path / "project"
+    cli.cmd_project_init(
+        argparse.Namespace(
+            root=str(project_root),
+            entry_agent="orchestrator",
+            provider="openai",
+        )
+    )
+    capsys.readouterr()
+    monkeypatch.chdir(project_root)
+
+    cli.cmd_memory_file_write(
+        argparse.Namespace(
+            scope="project",
+            name=None,
+            filename="",
+            content="# Project Memory\n\nShip with review gates.\n",
+            file=None,
+            append=False,
+        )
+    )
+    write_output = capsys.readouterr().out
+    assert "Updated project memory file AGENTS.md." in write_output
+
+    cli.cmd_memory_file_show(
+        argparse.Namespace(scope="project", name=None, filename="", revision_id="")
+    )
+    show_output = capsys.readouterr().out
+    assert "Ship with review gates." in show_output
+
+    cli.cmd_memory_file_write(
+        argparse.Namespace(
+            scope="project",
+            name=None,
+            filename="",
+            content="# Project Memory\n\nUse release candidates for demos.\n",
+            file=None,
+            append=False,
+        )
+    )
+    capsys.readouterr()
+
+    revisions = list_memory_file_revisions(
+        project_root / "agents" / "orchestrator",
+        scope="project",
+    )
+    oldest_revision_id = revisions["revisions"][-1]["id"]
+
+    cli.cmd_memory_file_history(
+        argparse.Namespace(scope="project", name=None, filename="")
+    )
+    history_output = capsys.readouterr().out
+    assert oldest_revision_id in history_output
+    assert "Current Revision:" in history_output
+
+    cli.cmd_memory_file_show(
+        argparse.Namespace(
+            scope="project",
+            name=None,
+            filename="",
+            revision_id=oldest_revision_id,
+        )
+    )
+    revision_output = capsys.readouterr().out
+    assert "Ship with review gates." in revision_output
+
+    cli.cmd_memory_file_restore(
+        argparse.Namespace(
+            scope="project",
+            revision_id=oldest_revision_id,
+            name=None,
+            filename="",
+        )
+    )
+    restore_output = capsys.readouterr().out
+    assert oldest_revision_id in restore_output
+
+    class FakeService:
+        def sync_memory_file(
+            self,
+            *,
+            scope,
+            agent_name=None,
+            filename="",
+            revision_id="",
+        ):
+            return {
+                "scope": scope,
+                "filename": filename or "AGENTS.md",
+                "synced_memory_id": "mem_file_1",
+                "revision": {"id": revision_id or "rev_latest"},
+                "already_synced": bool(revision_id),
+            }
+
+        def reject_compact(self, agent_name=None):
+            return {"rejected": False}
+
+    monkeypatch.setattr(
+        cli, "_require_project_service", lambda root=None: (FakeService(), None)
+    )
+    cli.cmd_memory_file_sync(
+        argparse.Namespace(
+            scope="project",
+            name=None,
+            filename="",
+            revision_id=oldest_revision_id,
+        )
+    )
+    sync_output = capsys.readouterr().out
+    assert "mem_file_1" in sync_output
+    assert oldest_revision_id in sync_output
+    assert "already synced" in sync_output.lower()
+
+    cli.cmd_compact_reject(argparse.Namespace(name=None))
+    reject_output = capsys.readouterr().out
+    assert "No pending compaction preview was present." in reject_output

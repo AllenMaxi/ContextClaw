@@ -25,8 +25,28 @@ def _make_fake_sdk():
         def recall(self, agent_id, query, limit=5):
             return []
 
+        def recall_memories(
+            self,
+            agent_id,
+            query,
+            limit=5,
+            memory_kind=None,
+            pinned_only=False,
+            min_importance=None,
+            tags=None,
+            token_budget=None,
+            summary_only=False,
+        ):
+            return []
+
         def store(
-            self, agent_id, content, metadata=None, evidence=None, citations=None
+            self,
+            agent_id,
+            content,
+            metadata=None,
+            evidence=None,
+            citations=None,
+            **_extra_fields,
         ):
             return {"id": "mem-1", "content": content}
 
@@ -103,8 +123,50 @@ def test_recall_calls_client_when_configured(patch_sdk):
 def test_recall_handles_exception_gracefully(patch_sdk):
     bridge = _make_bridge(agent_id="agent-1", auto_recall=True)
     bridge._client = MagicMock()
-    bridge._client.recall.side_effect = RuntimeError("connection refused")
+    bridge._client.recall.side_effect = ConnectionError("connection refused")
     result = bridge.recall("query")
+    assert result == []
+
+
+def test_recall_memories_calls_client_when_configured(patch_sdk):
+    client_mock = MagicMock()
+    client_mock.recall_memories.return_value = [{"memory": {"content": "compact"}}]
+    bridge = _make_bridge(agent_id="agent-1", auto_recall=True)
+    bridge._client = client_mock
+
+    result = bridge.recall_memories(
+        "deploy safely",
+        limit=3,
+        memory_kind="compact",
+        pinned_only=True,
+        min_importance=0.5,
+        tags=["deploy"],
+        token_budget=200,
+        summary_only=True,
+    )
+
+    client_mock.recall_memories.assert_called_once_with(
+        "agent-1",
+        "deploy safely",
+        limit=3,
+        memory_kind="compact",
+        pinned_only=True,
+        min_importance=0.5,
+        tags=["deploy"],
+        token_budget=200,
+        summary_only=True,
+    )
+    assert result == [{"memory": {"content": "compact"}}]
+
+
+@pytest.mark.parametrize("exc_type", [ConnectionError, TimeoutError, OSError])
+def test_recall_memories_handles_transient_exceptions_gracefully(patch_sdk, exc_type):
+    bridge = _make_bridge(agent_id="agent-1", auto_recall=True)
+    bridge._client = MagicMock()
+    bridge._client.recall_memories.side_effect = exc_type("memory recall unavailable")
+
+    result = bridge.recall_memories("deploy safely")
+
     assert result == []
 
 
@@ -141,10 +203,11 @@ def test_store_calls_client_when_configured(patch_sdk):
     assert result == {"id": "mem-42"}
 
 
-def test_store_handles_exception_gracefully(patch_sdk):
+@pytest.mark.parametrize("exc_type", [ConnectionError, TimeoutError, OSError])
+def test_store_handles_exception_gracefully(patch_sdk, exc_type):
     bridge = _make_bridge(agent_id="agent-1", auto_store=True)
     bridge._client = MagicMock()
-    bridge._client.store.side_effect = ConnectionError("server down")
+    bridge._client.store.side_effect = exc_type("server down")
     result = bridge.store("content")
     assert result is None
 
