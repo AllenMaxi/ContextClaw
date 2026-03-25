@@ -16,19 +16,23 @@ knowledge = ["contextgraph-sdk"]
 claude = ["anthropic"]
 openai = ["openai"]
 docker = ["docker"]
-all = ["contextclaw[knowledge,claude,openai,docker]"]
+studio = ["fastapi", "uvicorn"]
+desktop-build = ["pyinstaller"]
+all = ["contextclaw[knowledge,claude,openai,docker,studio]"]
 
 [project.scripts]
 cclaw = "contextclaw.cli:main"
+cclaw-studio = "contextclaw.studio.daemon:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["contextclaw"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "catalog" = "catalog"
+"studio-ui/dist" = "contextclaw/studio/_frontend"
 
 [tool.hatch.build.targets.sdist]
-include = ["contextclaw", "catalog", "README.md", "tests"]
+include = ["contextclaw", "catalog", "studio-ui/dist", "README.md", "tests"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

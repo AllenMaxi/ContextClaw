@@ -56,8 +56,8 @@ def _extract_path_tokens(command: str) -> list[str]:
         if "=" in token:
             _, _, value = token.partition("=")
             token = value
-        # Keep tokens that look like paths (start with /, ~, or ./)
-        if token.startswith(("/", "~", "./")):
+        # Keep tokens that look like paths (start with /, ~, ./, or ../)
+        if token.startswith(("/", "~", "./", "../")):
             paths.append(token)
     return paths
 
@@ -124,6 +124,11 @@ class ProcessSandbox:
     workspace: Path
     allowed_paths: list[str] = field(default_factory=list)
     blocked_paths: list[str] = field(default_factory=lambda: list(_DEFAULT_BLOCKED))
+    _resolved_allowed_cache: list[Path] | None = field(
+        default=None,
+        init=False,
+        repr=False,
+    )
     _resolved_blocked_cache: list[tuple[str, Path]] | None = field(
         default=None,
         init=False,
@@ -146,6 +151,14 @@ class ProcessSandbox:
             self._resolved_blocked_cache = pairs
         return self._resolved_blocked_cache
 
+    def _resolved_allowed(self) -> list[Path]:
+        if self._resolved_allowed_cache is None:
+            allowed = [self.workspace.resolve()]
+            for path in self.allowed_paths:
+                allowed.append(_resolve_path(path))
+            self._resolved_allowed_cache = allowed
+        return self._resolved_allowed_cache
+
     def _check_paths_against_blocked(
         self,
         paths: list[str],
@@ -161,6 +174,34 @@ class ProcessSandbox:
                 if _path_is_under(resolved, blocked_resolved):
                     return original
         return None
+
+    def _check_paths_against_allowed(
+        self,
+        paths: list[str],
+        allowed_roots: list[Path],
+    ) -> str | None:
+        for token in paths:
+            try:
+                resolved = _resolve_path(token)
+            except (OSError, ValueError):
+                continue
+            if any(_path_is_under(resolved, root) for root in allowed_roots):
+                continue
+            return token
+        return None
+
+    def _command_accesses_outside_allowed(self, command: str) -> str | None:
+        allowed_roots = self._resolved_allowed()
+        hit = self._check_paths_against_allowed(
+            _extract_path_tokens(command),
+            allowed_roots,
+        )
+        if hit:
+            return hit
+        return self._check_paths_against_allowed(
+            _extract_paths_from_subshells(command),
+            allowed_roots,
+        )
 
     def _command_accesses_blocked(self, command: str) -> str | None:
         """Return the first blocked path found in *command*, or None.
@@ -204,6 +245,18 @@ class ProcessSandbox:
                 exit_code=1,
                 stdout="",
                 stderr="Invalid timeout: must be positive",
+            )
+
+        outside_hit = self._command_accesses_outside_allowed(command)
+        if outside_hit:
+            logger.warning("Blocked command outside allowed roots: %s", command[:200])
+            return ExecutionResult(
+                exit_code=1,
+                stdout="",
+                stderr=(
+                    "Access denied: command references a path outside the sandbox workspace "
+                    f"('{outside_hit}')"
+                ),
             )
 
         blocked_hit = self._command_accesses_blocked(command)

@@ -131,6 +131,30 @@ async def test_process_sandbox_blocks_path_traversal_with_dotdot(tmp_path: Path)
     assert "Access denied" in result.stderr
 
 
+@pytest.mark.asyncio
+async def test_process_sandbox_blocks_absolute_path_outside_workspace(tmp_path: Path):
+    outside = tmp_path.parent / "outside.txt"
+    outside.write_text("outside", encoding="utf-8")
+    sandbox = ProcessSandbox(workspace=tmp_path)
+
+    result = await sandbox.execute(f"cat {outside}")
+
+    assert result.exit_code == 1
+    assert "Access denied" in result.stderr
+
+
+@pytest.mark.asyncio
+async def test_process_sandbox_blocks_relative_parent_escape(tmp_path: Path):
+    outside = tmp_path.parent / "outside.txt"
+    outside.write_text("outside", encoding="utf-8")
+    sandbox = ProcessSandbox(workspace=tmp_path)
+
+    result = await sandbox.execute("cat ../outside.txt")
+
+    assert result.exit_code == 1
+    assert "Access denied" in result.stderr
+
+
 # ---------------------------------------------------------------------------
 # Helper function tests
 # ---------------------------------------------------------------------------
@@ -139,10 +163,13 @@ async def test_process_sandbox_blocks_path_traversal_with_dotdot(tmp_path: Path)
 @pytest.mark.asyncio
 async def test_process_sandbox_no_false_positive_on_substring_paths(tmp_path: Path):
     """'/etc' being blocked should NOT block '/etc-backup' or '/etcetera'."""
-    sandbox = ProcessSandbox(workspace=tmp_path, blocked_paths=["/etc"])
-    # /etc-backup is a different directory — should NOT be blocked
+    sandbox = ProcessSandbox(
+        workspace=tmp_path,
+        allowed_paths=["/etc-backup"],
+        blocked_paths=["/etc"],
+    )
     result = await sandbox.execute("echo /etc-backup/file.txt")
-    assert result.exit_code == 0  # Should succeed, not be blocked
+    assert result.exit_code == 0
 
 
 @pytest.mark.asyncio

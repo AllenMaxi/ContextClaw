@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 from contextclaw.config.agent_config import AgentConfig
+from contextclaw.chat.session import ChatSession
 from contextclaw.providers.protocol import LLMResponse, ToolCall
 from contextclaw.runner import AgentRunner, Event
 from contextclaw.tools.manager import ToolDefinition, ToolManager
+from contextclaw.workflow import WorkflowConfig, write_workflow
 
 # ---------------------------------------------------------------------------
 # FakeProvider
@@ -97,6 +100,19 @@ async def test_simple_run_yields_text_and_done(tmp_path: Path):
 
     done_event = next(e for e in events if e.type == "done")
     assert done_event.data["content"] == "Hello from agent!"
+
+
+@pytest.mark.asyncio
+async def test_simple_run_emits_context_budget_event(tmp_path: Path):
+    config = _make_config(tmp_path)
+    provider = FakeProvider([LLMResponse(content="Hello from agent!")])
+    runner = AgentRunner(config=config, provider=provider, min_call_interval=0)
+
+    events = await _collect(runner, "Hi")
+
+    budget_event = next(e for e in events if e.type == "context_budget")
+    assert budget_event.data["status"] in {"healthy", "warn", "suggest_compact"}
+    assert budget_event.data["message_count"] >= 1
 
 
 @pytest.mark.asyncio
@@ -287,6 +303,85 @@ async def test_read_file_alias_supports_offset_and_limit(tmp_path: Path):
     result = next(e for e in events if e.type == "tool_result")
     assert '"offset": 2' in result.data["result"]
     assert '"content": "cdef"' in result.data["result"]
+
+
+@pytest.mark.asyncio
+async def test_runner_force_compacts_context_and_reuses_working_memory(
+    tmp_path: Path,
+):
+    workspace = tmp_path / "agents" / "orchestrator"
+    workspace.mkdir(parents=True, exist_ok=True)
+    write_workflow(
+        tmp_path / "Workflow.md",
+        WorkflowConfig(
+            entry_agent="orchestrator",
+            memory_policy={
+                "context_window_tokens": 512,
+                "reserve_tokens": 64,
+                "warn_threshold": 0.20,
+                "compact_threshold": 0.30,
+                "force_threshold": 0.35,
+                "recent_messages_target_tokens": 120,
+                "keep_recent_turns": 1,
+                "message_preview_chars": 120,
+            },
+            docs_policy={"mode": "review_queue", "roots": ["docs"]},
+        ),
+        body="# Workflow\n",
+    )
+    checkpoint_path = workspace / ".contextclaw" / "session.json"
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    session = ChatSession(max_history=0)
+    for index in range(4):
+        session.add_user(f"Historical request {index}: " + ("x" * 260))
+        session.add_assistant(f"Historical answer {index}: " + ("y" * 220))
+    checkpoint_path.write_text(
+        json.dumps({"session": session.to_dict(), "total_usage": {}}, indent=2),
+        encoding="utf-8",
+    )
+    config = _make_config(
+        tmp_path,
+        name="orchestrator",
+        workspace=workspace,
+        checkpoint_path=checkpoint_path,
+    )
+    provider = FakeProvider([LLMResponse(content="Compacted answer")])
+    knowledge = MagicMock()
+    knowledge.auto_recall = False
+    knowledge.store.return_value = {"memory": {"memory_id": "mem_compact"}}
+    runner = AgentRunner(
+        config=config,
+        provider=provider,
+        knowledge=knowledge,
+        min_call_interval=0,
+    )
+
+    events = await _collect(runner, "Please continue with the latest task.")
+
+    event_types = [event.type for event in events]
+    assert "compact_preview" in event_types
+    assert "context_compacted" in event_types
+    assert (workspace / ".contextclaw" / "working_memory.json").exists()
+    assert "## Working Memory" in provider.calls[0]["system"]
+    context_event = next(event for event in events if event.type == "context_compacted")
+    assert context_event.data["stored_memory_id"] == "mem_compact"
+    compaction_call = knowledge.store.call_args_list[0]
+    assert "## Working Memory" in compaction_call.args[0]
+    assert compaction_call.kwargs["metadata"] == {
+        "source": "context_compaction",
+        "agent": "orchestrator",
+        "reason": context_event.data["reason"],
+    }
+    assert compaction_call.kwargs["evidence"] == [context_event.data["artifact_path"]]
+    assert compaction_call.kwargs["citations"] == [context_event.data["artifact_path"]]
+    assert compaction_call.kwargs["memory_kind"] == "compact"
+    assert compaction_call.kwargs["tags"] == [
+        "compact",
+        "working-memory",
+        "orchestrator",
+    ]
+    assert isinstance(compaction_call.kwargs["section_schema"], dict)
+    assert compaction_call.kwargs["importance_score"] == 0.7
 
 
 @pytest.mark.asyncio
@@ -512,6 +607,70 @@ async def test_knowledge_recall_emits_event_when_memories_exist(tmp_path: Path):
     assert len(recall_events) == 1
     assert "memories" in recall_events[0].data
     assert recall_events[0].data["memories"][0]["content"] == "previous fact"
+
+
+@pytest.mark.asyncio
+async def test_durable_memory_recall_is_layered_into_system_prompt(tmp_path: Path):
+    config = _make_config(tmp_path)
+    provider = FakeProvider([LLMResponse(content="Answer using durable memory")])
+
+    knowledge = MagicMock()
+    knowledge.auto_recall = True
+    knowledge.recall_memories.return_value = [
+        {
+            "memory": {
+                "memory_id": "mem_1",
+                "memory_kind": "compact",
+                "content": "Keep the rollout on blue-green deployment.",
+                "summary": "Blue-green rollout",
+                "tags": ["deploy", "decision"],
+            },
+            "score": 0.88,
+            "matching_claims": [],
+        }
+    ]
+    knowledge.store.return_value = None
+
+    runner = AgentRunner(config=config, provider=provider, knowledge=knowledge)
+    events = await _collect(runner, "How should we deploy this safely?")
+
+    recall_event = next(e for e in events if e.type == "knowledge_recalled")
+    assert recall_event.data["mode"] == "durable"
+    assert "## Durable Memory Recall" in provider.calls[0]["system"]
+    assert "Blue-green rollout" in provider.calls[0]["system"]
+    assert "[Recalled knowledge]" not in runner.session.last_user_message
+    knowledge.recall_memories.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_runner_loads_project_and_agent_memory_files(tmp_path: Path):
+    project_root = tmp_path / "project"
+    workspace = project_root / "agents" / "orchestrator"
+    workspace.mkdir(parents=True, exist_ok=True)
+    write_workflow(
+        project_root / "Workflow.md", WorkflowConfig(entry_agent="orchestrator")
+    )
+    (project_root / "AGENTS.md").write_text(
+        "# Project Memory\n\nAlways use the review-first workflow.\n",
+        encoding="utf-8",
+    )
+    (workspace / "MEMORY.md").write_text(
+        "# Agent Memory\n\nThis agent prefers concise release notes.\n",
+        encoding="utf-8",
+    )
+    config = _make_config(
+        tmp_path,
+        name="orchestrator",
+        workspace=workspace,
+    )
+    provider = FakeProvider([LLMResponse(content="Ready.")])
+    runner = AgentRunner(config=config, provider=provider, min_call_interval=0)
+
+    await _collect(runner, "Summarize the changes.")
+
+    assert "## Always-Loaded Memory Files" in provider.calls[0]["system"]
+    assert "Always use the review-first workflow." in provider.calls[0]["system"]
+    assert "This agent prefers concise release notes." in provider.calls[0]["system"]
 
 
 @pytest.mark.asyncio

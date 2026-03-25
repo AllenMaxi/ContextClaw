@@ -33,8 +33,6 @@ def _status_payload(connector_id: str) -> dict[str, Any]:
     }
 
 
-
-
 def _emit(payload: dict[str, Any]) -> None:
     sys.stdout.write(json.dumps(payload, ensure_ascii=True) + "\n")
     sys.stdout.flush()

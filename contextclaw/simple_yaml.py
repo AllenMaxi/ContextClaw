@@ -53,7 +53,9 @@ def parse_yaml(text: str) -> dict[str, Any]:
             lines.append((indent, content))
 
     def parse_block(start: int, base_indent: int) -> tuple[Any, int]:
-        if start < len(lines) and lines[start][1].startswith("- "):
+        if start < len(lines) and (
+            lines[start][1] == "-" or lines[start][1].startswith("- ")
+        ):
             return parse_list(start, base_indent)
         return parse_dict(start, base_indent)
 
@@ -64,9 +66,11 @@ def parse_yaml(text: str) -> dict[str, Any]:
             indent, content = lines[index]
             if indent < base_indent:
                 break
-            if indent != base_indent or not content.startswith("- "):
+            if indent != base_indent or (
+                content != "-" and not content.startswith("- ")
+            ):
                 break
-            item = content[2:].strip()
+            item = content[1:].strip()
             if item:
                 inline = _parse_inline_list(item)
                 if inline is not None:
