@@ -1,59 +1,104 @@
 use std::{
   env,
   io::{Read, Write},
-  net::TcpStream,
+  net::{TcpListener, TcpStream},
   path::PathBuf,
   process::{Child, Command, Stdio},
   sync::Mutex,
   thread,
-  time::{Duration, Instant},
+  time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-use tauri::{AppHandle, Manager, RunEvent};
+use serde::Serialize;
+use tauri::{AppHandle, Manager, RunEvent, State};
 
 const STUDIO_HOST: &str = "127.0.0.1";
-const STUDIO_PORT: u16 = 8765;
 const SIDECAR_BASENAME: &str = "contextclaw-studio-daemon";
+const STUDIO_PORT_ENV: &str = "CONTEXTCLAW_DESKTOP_PORT";
+const STUDIO_TOKEN_HEADER: &str = "X-ContextClaw-Token";
+
+struct DaemonRuntime {
+  child: Child,
+  port: u16,
+  token: String,
+}
 
 #[derive(Default)]
 struct StudioDaemonState {
-  child: Mutex<Option<Child>>,
+  runtime: Mutex<Option<DaemonRuntime>>,
 }
 
-fn daemon_url() -> String {
-  format!("http://{STUDIO_HOST}:{STUDIO_PORT}/status")
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StudioInfo {
+  base_url: String,
+  port: u16,
 }
 
-fn studio_status_healthy() -> bool {
-  let address = format!("{STUDIO_HOST}:{STUDIO_PORT}");
-  let mut stream = match TcpStream::connect(address) {
-    Ok(stream) => stream,
-    Err(_) => return false,
-  };
+fn build_token() -> String {
+  let nanos = SystemTime::now()
+    .duration_since(UNIX_EPOCH)
+    .unwrap_or_default()
+    .as_nanos();
+  format!("studio-{}-{nanos}", std::process::id())
+}
+
+fn daemon_base_url(port: u16) -> String {
+  format!("http://{STUDIO_HOST}:{port}")
+}
+
+fn make_http_request(port: u16, token: &str, method: &str, path: &str) -> Result<String, String> {
+  let address = format!("{STUDIO_HOST}:{port}");
+  let mut stream = TcpStream::connect(address).map_err(|error| error.to_string())?;
   let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
   let _ = stream.set_write_timeout(Some(Duration::from_millis(500)));
   let request = format!(
-    "GET /status HTTP/1.1\r\nHost: {STUDIO_HOST}:{STUDIO_PORT}\r\nConnection: close\r\n\r\n"
+    "{method} {path} HTTP/1.1\r\nHost: {STUDIO_HOST}:{port}\r\n{STUDIO_TOKEN_HEADER}: {token}\r\nConnection: close\r\n\r\n"
   );
-  if stream.write_all(request.as_bytes()).is_err() {
-    return false;
-  }
+  stream
+    .write_all(request.as_bytes())
+    .map_err(|error| error.to_string())?;
   let mut response = String::new();
-  if stream.read_to_string(&mut response).is_err() {
-    return false;
-  }
-  response.contains("200 OK") && response.contains("\"status\":\"ok\"")
+  stream
+    .read_to_string(&mut response)
+    .map_err(|error| error.to_string())?;
+  Ok(response)
 }
 
-fn wait_for_studio_status(timeout: Duration) -> Result<(), String> {
+fn studio_status_healthy(port: u16, token: &str) -> bool {
+  make_http_request(port, token, "GET", "/status")
+    .map(|response| response.contains("200 OK") && response.contains("\"status\":\"ok\""))
+    .unwrap_or(false)
+}
+
+fn wait_for_studio_status(port: u16, token: &str, timeout: Duration) -> Result<(), String> {
   let deadline = Instant::now() + timeout;
   while Instant::now() < deadline {
-    if studio_status_healthy() {
+    if studio_status_healthy(port, token) {
       return Ok(());
     }
     thread::sleep(Duration::from_millis(150));
   }
-  Err(format!("Timed out waiting for Studio daemon at {}", daemon_url()))
+  Err(format!(
+    "Timed out waiting for Studio daemon at {}",
+    daemon_base_url(port)
+  ))
+}
+
+fn request_daemon_shutdown(port: u16, token: &str) -> Result<(), String> {
+  let response = make_http_request(port, token, "POST", "/shutdown")?;
+  if response.contains("200 OK") {
+    return Ok(());
+  }
+  Err(format!("Studio daemon shutdown request failed for {}", daemon_base_url(port)))
+}
+
+fn reserve_port() -> Result<u16, String> {
+  let listener = TcpListener::bind((STUDIO_HOST, 0)).map_err(|error| error.to_string())?;
+  listener
+    .local_addr()
+    .map(|address| address.port())
+    .map_err(|error| error.to_string())
 }
 
 fn sidecar_file_name() -> String {
@@ -90,31 +135,58 @@ fn resolve_sidecar_path(app: &AppHandle) -> Result<PathBuf, String> {
 
 fn stop_studio_daemon(app: &AppHandle) {
   let state = app.state::<StudioDaemonState>();
-  let mut guard = state.child.lock().expect("studio daemon mutex poisoned");
-  if let Some(mut child) = guard.take() {
-    if let Err(error) = child.kill() {
-      log::warn!("failed to stop Studio daemon: {error}");
+  let runtime = {
+    let mut guard = state.runtime.lock().expect("studio daemon mutex poisoned");
+    guard.take()
+  };
+
+  if let Some(mut runtime) = runtime {
+    if let Err(error) = request_daemon_shutdown(runtime.port, &runtime.token) {
+      log::warn!("failed to request Studio daemon shutdown: {error}");
     }
-    if let Err(error) = child.wait() {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < deadline {
+      match runtime.child.try_wait() {
+        Ok(Some(_)) => return,
+        Ok(None) => thread::sleep(Duration::from_millis(150)),
+        Err(error) => {
+          log::warn!("failed to inspect Studio daemon shutdown state: {error}");
+          break;
+        }
+      }
+    }
+    if let Err(error) = runtime.child.kill() {
+      log::warn!("failed to stop Studio daemon forcefully: {error}");
+    }
+    if let Err(error) = runtime.child.wait() {
       log::warn!("failed waiting for Studio daemon shutdown: {error}");
     }
   }
 }
 
-fn ensure_studio_daemon(app: &AppHandle) -> Result<(), String> {
-  if studio_status_healthy() {
-    log::info!("Using existing Studio daemon at {}", daemon_url());
-    return Ok(());
+fn configured_port() -> Result<Option<u16>, String> {
+  match env::var(STUDIO_PORT_ENV) {
+    Ok(value) => {
+      let port = value
+        .parse::<u16>()
+        .map_err(|error| format!("Invalid {STUDIO_PORT_ENV} value `{value}`: {error}"))?;
+      Ok(Some(port))
+    }
+    Err(_) => Ok(None),
   }
+}
 
+fn ensure_studio_daemon(app: &AppHandle) -> Result<(), String> {
   let state = app.state::<StudioDaemonState>();
   {
-    let mut guard = state.child.lock().expect("studio daemon mutex poisoned");
-    if let Some(child) = guard.as_mut() {
-      match child.try_wait() {
+    let mut guard = state.runtime.lock().expect("studio daemon mutex poisoned");
+    if let Some(runtime) = guard.as_mut() {
+      match runtime.child.try_wait() {
         Ok(None) => {
+          let port = runtime.port;
+          let token = runtime.token.clone();
           drop(guard);
-          return wait_for_studio_status(Duration::from_secs(10));
+          return wait_for_studio_status(port, &token, Duration::from_secs(10));
         }
         Ok(Some(_)) => {
           *guard = None;
@@ -128,32 +200,61 @@ fn ensure_studio_daemon(app: &AppHandle) -> Result<(), String> {
   }
 
   let sidecar_path = resolve_sidecar_path(app)?;
-  log::info!("Starting Studio daemon sidecar from {}", sidecar_path.display());
-  let child = Command::new(&sidecar_path)
-    .env("CONTEXTCLAW_STUDIO_HOST", STUDIO_HOST)
-    .env("CONTEXTCLAW_STUDIO_PORT", STUDIO_PORT.to_string())
-    .stdin(Stdio::null())
-    .stdout(Stdio::null())
-    .stderr(Stdio::null())
-    .spawn()
-    .map_err(|error| format!("Failed to start Studio daemon: {error}"))?;
+  let requested_port = configured_port()?;
+  let attempts = if requested_port.is_some() { 1 } else { 5 };
 
-  {
-    let mut guard = state.child.lock().expect("studio daemon mutex poisoned");
-    *guard = Some(child);
+  for _ in 0..attempts {
+    let port = match requested_port {
+      Some(port) => port,
+      None => reserve_port()?,
+    };
+    let token = build_token();
+    let mut child = Command::new(&sidecar_path)
+      .env("CONTEXTCLAW_STUDIO_HOST", STUDIO_HOST)
+      .env("CONTEXTCLAW_STUDIO_PORT", port.to_string())
+      .env("CONTEXTCLAW_STUDIO_TOKEN", &token)
+      .stdin(Stdio::null())
+      .stdout(Stdio::null())
+      .stderr(Stdio::null())
+      .spawn()
+      .map_err(|error| format!("Failed to start Studio daemon: {error}"))?;
+
+    match wait_for_studio_status(port, &token, Duration::from_secs(10)) {
+      Ok(()) => {
+        let mut guard = state.runtime.lock().expect("studio daemon mutex poisoned");
+        *guard = Some(DaemonRuntime { child, port, token });
+        return Ok(());
+      }
+      Err(error) => {
+        let _ = child.kill();
+        let _ = child.wait();
+        if requested_port.is_some() {
+          return Err(error);
+        }
+      }
+    }
   }
 
-  if let Err(error) = wait_for_studio_status(Duration::from_secs(10)) {
-    stop_studio_daemon(app);
-    return Err(error);
-  }
-  Ok(())
+  Err("Failed to start Studio daemon after multiple attempts".to_string())
+}
+
+#[tauri::command]
+fn studio_info(state: State<'_, StudioDaemonState>) -> Result<StudioInfo, String> {
+  let guard = state.runtime.lock().expect("studio daemon mutex poisoned");
+  let runtime = guard
+    .as_ref()
+    .ok_or_else(|| "Studio daemon is not running".to_string())?;
+  Ok(StudioInfo {
+    base_url: daemon_base_url(runtime.port),
+    port: runtime.port,
+  })
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   let app = tauri::Builder::default()
     .manage(StudioDaemonState::default())
+    .invoke_handler(tauri::generate_handler![studio_info])
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(

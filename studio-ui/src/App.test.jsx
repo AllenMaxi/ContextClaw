@@ -10,6 +10,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App";
 
+const { invokeMock } = vi.hoisted(() => ({
+  invokeMock: vi.fn(),
+}));
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: invokeMock,
+}));
+
 let eventSources = [];
 
 class FakeEventSource {
@@ -66,6 +74,15 @@ function jsonResponse(payload, ok = true, status = 200) {
 
 function errorResponse(detail, status = 400) {
   return jsonResponse({ detail }, false, status);
+}
+
+function requestPath(input) {
+  const value = String(input);
+  if (/^https?:\/\//.test(value)) {
+    const url = new URL(value);
+    return `${url.pathname}${url.search}`;
+  }
+  return value;
 }
 
 function installFetchMock(overrides = {}) {
@@ -132,8 +149,7 @@ function installFetchMock(overrides = {}) {
   };
 
   global.fetch = vi.fn(async (input, options = {}) => {
-    const url = String(input);
-    const path = url.replace("http://127.0.0.1:8765", "");
+    const path = requestPath(input);
     const method = (options.method || "GET").toUpperCase();
     const key = `${method} ${path}`;
     if (key in overrides) {
@@ -153,12 +169,14 @@ describe("Studio App", () => {
   beforeEach(() => {
     eventSources = [];
     installFetchMock();
+    invokeMock.mockReset();
     window.EventSource = FakeEventSource;
     global.EventSource = FakeEventSource;
   });
 
   afterEach(() => {
     cleanup();
+    delete window.__TAURI_INTERNALS__;
     delete window.EventSource;
     delete global.EventSource;
     vi.restoreAllMocks();
@@ -215,10 +233,33 @@ describe("Studio App", () => {
     expect(screen.getByText(/Deploy the studio safely/i)).toBeInTheDocument();
   });
 
+  it("resolves the runtime API base from the Tauri shell", async () => {
+    window.__TAURI_INTERNALS__ = {};
+    invokeMock.mockResolvedValue({
+      baseUrl: "http://127.0.0.1:5123",
+      port: 5123,
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("studio_info");
+    });
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        "http://127.0.0.1:5123/projects/current",
+        undefined,
+      );
+    });
+    await waitFor(() => {
+      expect(eventSources).toHaveLength(1);
+    });
+    expect(eventSources[0].url).toBe("http://127.0.0.1:5123/events/stream");
+  });
+
   it("renders the project bootstrap controls when no project is open", async () => {
     global.fetch = vi.fn(async (input) => {
-      const url = String(input);
-      const path = url.replace("http://127.0.0.1:8765", "");
+      const path = requestPath(input);
       if (path === "/projects/current") {
         return errorResponse("No project is currently open");
       }

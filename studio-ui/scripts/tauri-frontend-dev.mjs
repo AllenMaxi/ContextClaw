@@ -4,7 +4,6 @@ const npmBin = process.platform === "win32" ? "npm.cmd" : "npm";
 const env = {
   ...process.env,
   VITE_STUDIO_SHELL: "tauri",
-  VITE_STUDIO_API_BASE: "http://127.0.0.1:8765",
 };
 
 const buildSidecar = spawnSync(npmBin, ["run", "tauri:sidecar"], {

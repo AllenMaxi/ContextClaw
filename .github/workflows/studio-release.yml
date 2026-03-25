@@ -1,0 +1,110 @@
+name: Studio Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "studio-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  publish-tauri:
+    name: Publish Studio (${{ matrix.target }})
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            args: --target aarch64-apple-darwin
+          - target: x86_64-apple-darwin
+            args: --target x86_64-apple-darwin
+
+    env:
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: studio-ui/package-lock.json
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./studio-ui/src-tauri -> target"
+
+      - name: Install desktop build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[studio,desktop-build]" build
+
+      - name: Install frontend dependencies
+        working-directory: studio-ui
+        run: npm ci
+
+      - name: Capture build environment
+        run: |
+          echo "CONTEXTCLAW_PYTHON_BIN=$(python -c 'import sys; print(sys.executable)')" >> "$GITHUB_ENV"
+          echo "CONTEXTCLAW_TAURI_TARGET_TRIPLE=${{ matrix.target }}" >> "$GITHUB_ENV"
+
+      - name: Import Apple signing certificate
+        if: ${{ secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.KEYCHAIN_PASSWORD != '' }}
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          echo "$APPLE_CERTIFICATE" | base64 --decode > certificate.p12
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -t 3600 -u build.keychain
+          security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+          CERT_ID=$(security find-identity -v -p codesigning build.keychain | grep -E "Developer ID Application|Apple Distribution|Apple Development" | head -n 1 | awk -F'"' '{print $2}')
+          if [ -z "$CERT_ID" ]; then
+            echo "No signing identity found after importing certificate" >&2
+            exit 1
+          fi
+          echo "APPLE_SIGNING_IDENTITY=$CERT_ID" >> "$GITHUB_ENV"
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CONTEXTCLAW_PYTHON_BIN: ${{ env.CONTEXTCLAW_PYTHON_BIN }}
+          CONTEXTCLAW_TAURI_TARGET_TRIPLE: ${{ env.CONTEXTCLAW_TAURI_TARGET_TRIPLE }}
+          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ env.APPLE_ID }}
+          APPLE_PASSWORD: ${{ env.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ env.APPLE_TEAM_ID }}
+        with:
+          projectPath: studio-ui
+          args: ${{ matrix.args }}
+          tagName: studio-v__VERSION__
+          releaseName: ContextClaw Studio v__VERSION__
+          releaseDraft: true
+          prerelease: false
+
+      - name: Verify bundled sidecar
+        run: |
+          python scripts/verify_studio_sidecar.py \
+            --sidecar "studio-ui/src-tauri/target/${{ matrix.target }}/release/bundle/macos/ContextClaw Studio.app/Contents/MacOS/contextclaw-studio-daemon"

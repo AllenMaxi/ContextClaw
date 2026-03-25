@@ -146,6 +146,20 @@ The Tauri build bundles:
 - a frozen `contextclaw-studio-daemon` sidecar
 - the same project-local runtime state the CLI uses
 
+CI now verifies the desktop path in three layers:
+
+- `studio-ui` frontend tests and production build
+- a wheel packaging smoke test that checks `contextclaw/studio/_frontend/`
+- a macOS desktop smoke build that launches the bundled sidecar and verifies
+  graceful shutdown
+
+For release packaging, GitHub Actions now includes a `Studio Release` workflow.
+If Apple signing secrets are configured (`APPLE_CERTIFICATE`,
+`APPLE_CERTIFICATE_PASSWORD`, `KEYCHAIN_PASSWORD`, and optionally `APPLE_ID`,
+`APPLE_PASSWORD`, `APPLE_TEAM_ID` for notarization), the workflow will sign and
+notarize the desktop build. Without those secrets, it still produces draft
+release artifacts for internal testing.
+
 ## What You Get On Day One
 
 - **Providers:** Claude, OpenAI, and Ollama

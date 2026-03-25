@@ -9,7 +9,12 @@ const scriptPath = path.resolve(projectRoot, "../scripts/build_studio_sidecar.py
 
 const result = spawnSync(
   pythonBin,
-  [scriptPath],
+  [
+    scriptPath,
+    ...(process.env.CONTEXTCLAW_TAURI_TARGET_TRIPLE
+      ? ["--target-triple", process.env.CONTEXTCLAW_TAURI_TARGET_TRIPLE]
+      : []),
+  ],
   {
     cwd: path.resolve(projectRoot, ".."),
     stdio: "inherit",

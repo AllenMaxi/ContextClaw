@@ -8,11 +8,15 @@ const DEFAULT_MEMORY_EDITOR = {
 };
 const API_BASE = (import.meta.env.VITE_STUDIO_API_BASE || "").replace(/\/$/, "");
 
-function studioUrl(path) {
-  if (!API_BASE) {
+function isTauriShell() {
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
+function studioUrl(path, baseUrl = API_BASE) {
+  if (!baseUrl) {
     return path;
   }
-  return new URL(path, `${API_BASE}/`).toString();
+  return new URL(path, `${baseUrl}/`).toString();
 }
 
 function Card({ title, children, actions }) {
@@ -31,13 +35,22 @@ function JsonBlock({ value }) {
   return <pre className="json-block">{JSON.stringify(value, null, 2)}</pre>;
 }
 
-async function fetchJson(path, options) {
-  const response = await fetch(studioUrl(path), options);
+async function fetchJson(path, options, baseUrl = API_BASE) {
+  const response = await fetch(studioUrl(path, baseUrl), options);
   const payload = await response.json();
   if (!response.ok) {
     throw new Error(payload.detail || JSON.stringify(payload));
   }
   return payload;
+}
+
+async function resolveRuntimeApiBase() {
+  if (API_BASE || !isTauriShell()) {
+    return API_BASE;
+  }
+  const { invoke } = await import("@tauri-apps/api/core");
+  const payload = await invoke("studio_info");
+  return String(payload?.baseUrl || "").replace(/\/$/, "");
 }
 
 function previewText(value, limit = 120) {
@@ -69,6 +82,8 @@ function describeLiveEvent(event) {
 }
 
 export default function App() {
+  const tauriShell = isTauriShell();
+  const [runtimeApiBase, setRuntimeApiBase] = useState(API_BASE);
   const [project, setProject] = useState(null);
   const [projectRoot, setProjectRoot] = useState("");
   const [projectEntryAgent, setProjectEntryAgent] = useState("orchestrator");
@@ -106,6 +121,8 @@ export default function App() {
     contextAgent.trim() || targetAgent.trim() || "";
   const selectedMemoryAgent =
     memoryFileAgent.trim() || selectedContextAgent || "";
+  const effectiveApiBase = runtimeApiBase || API_BASE;
+  const runtimeReady = !tauriShell || Boolean(effectiveApiBase);
   const streamStatusLabel = {
     connecting: "Connecting live feed",
     live: "Live feed connected",
@@ -117,9 +134,40 @@ export default function App() {
     return /No project is currently open/i.test(error?.message || "");
   }
 
+  async function fetchStudioJson(path, options) {
+    return fetchJson(path, options, effectiveApiBase);
+  }
+
+  useEffect(() => {
+    let active = true;
+    if (!tauriShell || API_BASE) {
+      setRuntimeApiBase(API_BASE);
+      return undefined;
+    }
+    setStreamStatus("connecting");
+    void resolveRuntimeApiBase()
+      .then((baseUrl) => {
+        if (!active) {
+          return;
+        }
+        setRuntimeApiBase(baseUrl);
+      })
+      .catch((error) => {
+        if (!active) {
+          return;
+        }
+        setRuntimeApiBase("");
+        setStreamStatus("unavailable");
+        setErrorMessage(error.message);
+      });
+    return () => {
+      active = false;
+    };
+  }, [tauriShell]);
+
   async function refresh({ preserveContext = false } = {}) {
     try {
-      const nextProject = await fetchJson("/projects/current");
+      const nextProject = await fetchStudioJson("/projects/current");
       const [
         nextAgents,
         nextRuns,
@@ -129,20 +177,20 @@ export default function App() {
         nextWorkflow,
         nextContextGraph,
       ] = await Promise.all([
-        fetchJson("/agents"),
-        fetchJson("/runs"),
-        fetchJson("/approvals"),
-        fetchJson("/memory"),
-        fetchJson("/docs/proposals"),
-        fetchJson("/workflow"),
-        fetchJson("/contextgraph/status"),
+        fetchStudioJson("/agents"),
+        fetchStudioJson("/runs"),
+        fetchStudioJson("/approvals"),
+        fetchStudioJson("/memory"),
+        fetchStudioJson("/docs/proposals"),
+        fetchStudioJson("/workflow"),
+        fetchStudioJson("/contextgraph/status"),
       ]);
 
       const fileParams = new URLSearchParams();
       if (selectedMemoryAgent) {
         fileParams.set("agent_name", selectedMemoryAgent);
       }
-      const nextMemoryFiles = await fetchJson(
+      const nextMemoryFiles = await fetchStudioJson(
         `/memory-files${fileParams.toString() ? `?${fileParams.toString()}` : ""}`,
       );
 
@@ -191,8 +239,11 @@ export default function App() {
   }
 
   useEffect(() => {
+    if (!runtimeReady) {
+      return;
+    }
     void refresh();
-  }, [selectedMemoryAgent, selectedContextAgent]);
+  }, [runtimeReady, selectedMemoryAgent, selectedContextAgent]);
 
   useEffect(() => {
     if (project?.root) {
@@ -201,12 +252,15 @@ export default function App() {
   }, [project]);
 
   useEffect(() => {
+    if (!runtimeReady) {
+      return undefined;
+    }
     if (typeof window === "undefined" || typeof window.EventSource !== "function") {
       setStreamStatus("unavailable");
       return undefined;
     }
 
-    const source = new window.EventSource(studioUrl("/events/stream"));
+    const source = new window.EventSource(studioUrl("/events/stream", effectiveApiBase));
     const handleEvent = (message) => {
       try {
         const payload = JSON.parse(message.data);
@@ -238,7 +292,7 @@ export default function App() {
       source.removeEventListener("studio.heartbeat", handleHeartbeat);
       source.close();
     };
-  }, []);
+  }, [effectiveApiBase, runtimeReady]);
 
   async function refreshContext({ throwOnError = true } = {}) {
     try {
@@ -246,7 +300,7 @@ export default function App() {
       if (selectedContextAgent) {
         params.set("agent_name", selectedContextAgent);
       }
-      const payload = await fetchJson(
+      const payload = await fetchStudioJson(
         `/context${params.toString() ? `?${params.toString()}` : ""}`,
       );
       setContextView(payload);
@@ -264,7 +318,7 @@ export default function App() {
     if (!prompt.trim()) {
       return;
     }
-    const result = await fetchJson("/runs", {
+    const result = await fetchStudioJson("/runs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -283,7 +337,7 @@ export default function App() {
       return;
     }
     const endpoint = initialize ? "/projects/init" : "/projects/open";
-    await fetchJson(endpoint, {
+    await fetchStudioJson(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -299,7 +353,7 @@ export default function App() {
     if (!newAgentName.trim()) {
       return;
     }
-    await fetchJson("/agents", {
+    await fetchStudioJson("/agents", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -313,14 +367,14 @@ export default function App() {
   }
 
   async function resolveApproval(approvalId, approved) {
-    await fetchJson(`/approvals/${approvalId}/${approved ? "approve" : "deny"}`, {
+    await fetchStudioJson(`/approvals/${approvalId}/${approved ? "approve" : "deny"}`, {
       method: "POST",
     });
     await refresh({ preserveContext: true });
   }
 
   async function pinMemory(proposalId, pinned) {
-    await fetchJson(`/memory/${proposalId}/pin`, {
+    await fetchStudioJson(`/memory/${proposalId}/pin`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ pinned }),
@@ -329,12 +383,12 @@ export default function App() {
   }
 
   async function syncMemory(proposalId) {
-    await fetchJson(`/memory/${proposalId}/sync`, { method: "POST" });
+    await fetchStudioJson(`/memory/${proposalId}/sync`, { method: "POST" });
     await refresh({ preserveContext: true });
   }
 
   async function rejectMemory(proposalId) {
-    await fetchJson(`/memory/${proposalId}/reject`, { method: "POST" });
+    await fetchStudioJson(`/memory/${proposalId}/reject`, { method: "POST" });
     await refresh({ preserveContext: true });
   }
 
@@ -342,7 +396,7 @@ export default function App() {
     if (!catalogAgent.trim() || !connectorId.trim()) {
       return;
     }
-    const result = await fetchJson("/connectors/install", {
+    const result = await fetchStudioJson("/connectors/install", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -358,7 +412,7 @@ export default function App() {
     if (!catalogAgent.trim() || !skillId.trim()) {
       return;
     }
-    const result = await fetchJson("/skills/install", {
+    const result = await fetchStudioJson("/skills/install", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -372,7 +426,7 @@ export default function App() {
   }
 
   async function previewCompact() {
-    const result = await fetchJson("/compact/preview", {
+    const result = await fetchStudioJson("/compact/preview", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -385,7 +439,7 @@ export default function App() {
   }
 
   async function applyCompact() {
-    const result = await fetchJson("/compact/apply", {
+    const result = await fetchStudioJson("/compact/apply", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -398,7 +452,7 @@ export default function App() {
   }
 
   async function rejectCompact() {
-    const result = await fetchJson("/compact/reject", {
+    const result = await fetchStudioJson("/compact/reject", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -419,7 +473,7 @@ export default function App() {
     if (filename) {
       params.set("filename", filename);
     }
-    const result = await fetchJson(`/memory-files/content?${params.toString()}`);
+    const result = await fetchStudioJson(`/memory-files/content?${params.toString()}`);
     setMemoryEditor({
       scope: result.scope,
       filename: result.filename,
@@ -444,7 +498,7 @@ export default function App() {
     if (memoryEditor.filename.trim()) {
       params.set("filename", memoryEditor.filename.trim());
     }
-    const result = await fetchJson(`/memory-files/revision?${params.toString()}`);
+    const result = await fetchStudioJson(`/memory-files/revision?${params.toString()}`);
     setMemoryEditor((current) => ({
       ...current,
       scope: result.scope,
@@ -464,7 +518,7 @@ export default function App() {
     if (filename) {
       params.set("filename", filename);
     }
-    const result = await fetchJson(`/memory-files/revisions?${params.toString()}`);
+    const result = await fetchStudioJson(`/memory-files/revisions?${params.toString()}`);
     const preferredRevision =
       result.revisions.find((item) => item.current) || result.revisions[0] || null;
     setMemoryEditor((current) => ({
@@ -478,7 +532,7 @@ export default function App() {
   }
 
   async function saveMemoryFile() {
-    const result = await fetchJson("/memory-files/content", {
+    const result = await fetchStudioJson("/memory-files/content", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -503,7 +557,7 @@ export default function App() {
     if (!memoryEditor.revisionId.trim()) {
       return;
     }
-    const result = await fetchJson("/memory-files/restore", {
+    const result = await fetchStudioJson("/memory-files/restore", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -525,7 +579,7 @@ export default function App() {
   }
 
   async function syncMemoryFile(scopeOverride = "", filenameOverride = "") {
-    const result = await fetchJson("/memory-files/sync", {
+    const result = await fetchStudioJson("/memory-files/sync", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -544,17 +598,17 @@ export default function App() {
   }
 
   async function validateWorkflow() {
-    const result = await fetchJson("/workflow/validate", { method: "POST" });
+    const result = await fetchStudioJson("/workflow/validate", { method: "POST" });
     setContextView(result);
   }
 
   async function applyDoc(proposalId) {
-    await fetchJson(`/docs/proposals/${proposalId}/apply`, { method: "POST" });
+    await fetchStudioJson(`/docs/proposals/${proposalId}/apply`, { method: "POST" });
     await refresh({ preserveContext: true });
   }
 
   async function rejectDoc(proposalId) {
-    await fetchJson(`/docs/proposals/${proposalId}/reject`, { method: "POST" });
+    await fetchStudioJson(`/docs/proposals/${proposalId}/reject`, { method: "POST" });
     await refresh({ preserveContext: true });
   }
 

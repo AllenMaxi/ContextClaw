@@ -41,8 +41,9 @@ lands inside `contextclaw/studio/_frontend/`.
 
 This workspace now includes a Tauri shell scaffold in `src-tauri/`.
 
-The shell now starts and stops a bundled Python Studio daemon sidecar on
-`http://127.0.0.1:8765` automatically.
+The shell now starts and stops a bundled Python Studio daemon sidecar
+automatically, choosing a local port at runtime and passing the resolved API
+base to the React app through the native shell.
 
 Before building the native shell, install the desktop build tooling:
 
@@ -63,6 +64,25 @@ npm run tauri:dev
 If you need a non-default Python interpreter for the sidecar build, set
 `CONTEXTCLAW_PYTHON_BIN=/path/to/python`.
 
+If you need to force a specific sidecar port while debugging the desktop app,
+set `CONTEXTCLAW_DESKTOP_PORT=<port>`.
+
 The native build has been verified on macOS arm64 and produces:
 
 - `src-tauri/target/debug/bundle/macos/ContextClaw Studio.app`
+
+## CI And Release
+
+The repo now includes:
+
+- a CI frontend job for `npm run test` and `npm run build`
+- a packaging smoke job that verifies the built React app lands inside the
+  wheel artifact
+- a macOS desktop smoke job that builds the Tauri shell and verifies the
+  bundled sidecar responds to `/status` and shuts down gracefully
+
+The `Studio Release` workflow builds draft macOS release artifacts for both
+Apple Silicon and Intel targets. If Apple signing secrets are available, it
+imports the certificate and lets Tauri sign the app; if notarization secrets
+(`APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`) are also present, Tauri can
+submit the build for notarization during release packaging.

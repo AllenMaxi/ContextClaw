@@ -36,6 +36,112 @@ jobs:
       - name: Run tests
         run: python -m pytest tests/ -v --tb=short
 
+  studio-ui:
+    name: Studio UI
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: studio-ui/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: studio-ui
+        run: npm ci
+
+      - name: Run frontend tests
+        working-directory: studio-ui
+        run: npm run test
+
+      - name: Build frontend
+        working-directory: studio-ui
+        run: npm run build
+
+  package-smoke:
+    name: Package Smoke
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: studio-ui/package-lock.json
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[studio]" build pytest
+
+      - name: Build frontend assets
+        run: |
+          npm ci --prefix studio-ui
+          npm run build --prefix studio-ui
+
+      - name: Run packaging smoke test
+        run: python -m pytest tests/test_packaging.py -q
+
+  desktop-smoke:
+    name: Desktop Smoke (macOS)
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: studio-ui/package-lock.json
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./studio-ui/src-tauri -> target"
+
+      - name: Install desktop build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[studio,desktop-build]" build
+
+      - name: Install frontend dependencies
+        working-directory: studio-ui
+        run: npm ci
+
+      - name: Capture Python path for sidecar builds
+        run: echo "CONTEXTCLAW_PYTHON_BIN=$(python -c 'import sys; print(sys.executable)')" >> "$GITHUB_ENV"
+
+      - name: Build Tauri desktop shell
+        working-directory: studio-ui
+        run: npx tauri build --debug
+
+      - name: Verify bundled sidecar
+        run: |
+          python scripts/verify_studio_sidecar.py \
+            --sidecar "studio-ui/src-tauri/target/debug/bundle/macos/ContextClaw Studio.app/Contents/MacOS/contextclaw-studio-daemon"
+
   lint:
     name: Lint
     runs-on: ubuntu-latest

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -135,6 +136,29 @@ def test_studio_status_reports_health_and_project_state(tmp_path: Path):
     service.init_project(tmp_path, entry_agent="orchestrator", provider="openai")
     response = client.get("/status")
     assert response.json()["project_open"] is True
+
+
+def test_studio_status_requires_auth_token_when_configured():
+    client = TestClient(create_app(StudioService(), auth_token="secret-token"))
+
+    denied = client.get("/status")
+    allowed = client.get("/status", headers={"X-ContextClaw-Token": "secret-token"})
+
+    assert denied.status_code == 403
+    assert allowed.status_code == 200
+    assert allowed.json()["status"] == "ok"
+
+
+def test_studio_shutdown_sets_server_exit_flag():
+    app = create_app(StudioService(), auth_token="secret-token")
+    app.state.uvicorn_server = SimpleNamespace(should_exit=False)
+    client = TestClient(app)
+
+    response = client.post("/shutdown", headers={"X-ContextClaw-Token": "secret-token"})
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "shutting_down"
+    assert app.state.uvicorn_server.should_exit is True
 
 
 def test_studio_dashboard_falls_back_to_inline_ui(

@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import (
     FileResponse,
@@ -121,7 +121,11 @@ def _heartbeat_frame() -> str:
     return 'event: studio.heartbeat\ndata: {"status":"ok"}\n\n'
 
 
-def create_app(service: StudioService | None = None) -> FastAPI:
+def create_app(
+    service: StudioService | None = None,
+    *,
+    auth_token: str = "",
+) -> FastAPI:
     studio = service or StudioService()
 
     @asynccontextmanager
@@ -167,14 +171,37 @@ def create_app(service: StudioService | None = None) -> FastAPI:
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
 
+    app.state.studio_auth_token = auth_token
+    app.state.uvicorn_server = None
+
+    def _require_auth(x_contextclaw_token: str | None) -> None:
+        expected = getattr(app.state, "studio_auth_token", "")
+        if expected and x_contextclaw_token != expected:
+            raise HTTPException(status_code=403, detail="Invalid studio token")
+
     @app.get("/status")
-    def status() -> dict[str, Any]:
+    def status(
+        x_contextclaw_token: str | None = Header(default=None),
+    ) -> dict[str, Any]:
+        _require_auth(x_contextclaw_token)
         return {
             "status": "ok",
             "service": "contextclaw-studio",
             "frontend_ready": frontend_ready,
             "project_open": studio._layout is not None,
+            "pid": os.getpid(),
         }
+
+    @app.post("/shutdown")
+    def shutdown(
+        x_contextclaw_token: str | None = Header(default=None),
+    ) -> dict[str, Any]:
+        _require_auth(x_contextclaw_token)
+        server = getattr(app.state, "uvicorn_server", None)
+        if server is None:
+            raise HTTPException(status_code=503, detail="Shutdown unavailable")
+        server.should_exit = True
+        return {"status": "shutting_down"}
 
     @app.get("/projects/current")
     def current_project() -> dict[str, Any]:
@@ -900,4 +927,9 @@ def main() -> None:
 
     host = os.environ.get("CONTEXTCLAW_STUDIO_HOST", "127.0.0.1")
     port = int(os.environ.get("CONTEXTCLAW_STUDIO_PORT", "8765"))
-    uvicorn.run(create_app(), host=host, port=port)
+    auth_token = os.environ.get("CONTEXTCLAW_STUDIO_TOKEN", "")
+    app = create_app(auth_token=auth_token)
+    config = uvicorn.Config(app, host=host, port=port)
+    server = uvicorn.Server(config)
+    app.state.uvicorn_server = server
+    server.run()
